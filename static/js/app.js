@@ -21,6 +21,7 @@
   const clearBtn = document.getElementById("clear-btn");
   const deleteWordBtn = document.getElementById("delete-word-btn");
   const speakBtn = document.getElementById("speak-btn");
+  const copyBtn = document.getElementById("copy-btn");
   const refreshHistBtn = document.getElementById("refresh-history-btn");
   const clearHistBtn = document.getElementById("clear-history-btn");
   const langSelect = document.getElementById("lang-select");
@@ -29,6 +30,13 @@
   const trainingModeToggle = document.getElementById("training-mode-toggle");
   const topkPanel = document.getElementById("topk-panel");
   const topkList = document.getElementById("topk-list");
+
+  /* ── Premium video overlay elements ──────────────────────── */
+  const videoWrapper = video ? video.closest(".video-wrapper") : null;
+  const videoLiveBadge = document.getElementById("video-live-badge");
+  const videoFpsOverlay = document.getElementById("video-fps-overlay");
+  const fpsOverlayVal = document.getElementById("fps-overlay-val");
+  const confidenceMeterFill = document.getElementById("confidence-meter-fill");
 
   /* ── Coaching System Elements ──────────────────────────────── */
   const coachingContainer = document.getElementById("coaching-container");
@@ -932,13 +940,15 @@
   }
 
   function updateFpsDisplay() {
-    if (!fpsStatus) return;
     if (paused || fpsWindow.length === 0) {
-      fpsStatus.textContent = "FPS: —";
+      if (fpsStatus) fpsStatus.textContent = "FPS: —";
+      if (fpsOverlayVal) fpsOverlayVal.textContent = "—";
       return;
     }
     const avg = fpsWindow.reduce((a, b) => a + b, 0) / fpsWindow.length;
-    fpsStatus.textContent = `FPS: ${Math.min(60, Math.max(1, Math.round(1000 / Math.max(16, avg))))}`;
+    const fps = Math.min(60, Math.max(1, Math.round(1000 / Math.max(16, avg))));
+    if (fpsStatus) fpsStatus.textContent = `FPS: ${fps}`;
+    if (fpsOverlayVal) fpsOverlayVal.textContent = fps;
   }
 
   /* ── Shared prediction UI updater (called by socket OR poll) ── */
@@ -1028,11 +1038,15 @@
 
   /* ── Confidence badge ─────────────────────────────────────── */
   function updateConfidence(raw) {
-    if (!confidenceBadge) return;
     const pct = Math.round((raw || 0) * 100);
-    confidenceBadge.textContent = `${pct}%`;
-    confidenceBadge.className =
-      "badge " + (pct > 85 ? "high" : pct > 70 ? "mid" : "low");
+    if (confidenceBadge) {
+      confidenceBadge.textContent = `${pct}%`;
+      confidenceBadge.className =
+        "badge " + (pct > 85 ? "high" : pct > 70 ? "mid" : "low");
+    }
+    if (confidenceMeterFill) {
+      confidenceMeterFill.style.width = pct + "%";
+    }
   }
 
   /* ── Language selector ────────────────────────────────────── */
@@ -1313,6 +1327,13 @@
     if (startBtn) startBtn.disabled = true;
     if (pauseBtn) pauseBtn.disabled = false;
     setDot(cameraDot, "pulsing");
+
+    // Show premium video overlay elements
+    if (videoWrapper) {
+      videoWrapper.classList.add("scanning", "camera-active");
+    }
+    if (videoLiveBadge) videoLiveBadge.classList.add("visible");
+
     startSessionTimer();
   }
 
@@ -1329,6 +1350,14 @@
     updateFpsDisplay();
     resetCoachingState();
     if (sessionStats.durationTimer) clearInterval(sessionStats.durationTimer);
+
+    // Hide premium video overlay elements
+    if (videoWrapper) {
+      videoWrapper.classList.remove("scanning", "camera-active");
+    }
+    if (videoLiveBadge) videoLiveBadge.classList.remove("visible");
+    if (confidenceMeterFill) confidenceMeterFill.style.width = "0%";
+    if (fpsOverlayVal) fpsOverlayVal.textContent = "—";
   }
 
   /* ── Bind buttons ─────────────────────────────────────────── */
@@ -1343,6 +1372,21 @@
     if (clearBtn) clearBtn.addEventListener("click", clearSentence);
     if (refreshHistBtn) refreshHistBtn.addEventListener("click", refreshHistoryPage);
     if (clearHistBtn) clearHistBtn.addEventListener("click", clearHistory);
+
+    // Copy button
+    if (copyBtn) {
+      copyBtn.addEventListener("click", () => {
+        const text = sentenceDisplay
+          ? sentenceDisplay.textContent.trim()
+          : (recognizedText ? recognizedText.textContent.trim() : "");
+        if (!text || text === "—" || text === "…") return;
+        navigator.clipboard.writeText(text).then(() => {
+          const orig = copyBtn.textContent;
+          copyBtn.textContent = "✅ Copied";
+          setTimeout(() => { copyBtn.textContent = orig; }, 1500);
+        }).catch(() => {});
+      });
+    }
 
     // Practice mode listeners
     if (practiceBtn) practiceBtn.addEventListener("click", togglePracticeMode);
