@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description"
+    content="{% block meta_description %}Real-time sign language translation powered by AI, MediaPipe, and deep learning.{% endblock %}">
+  <meta name="theme-color" content="#000000">
+  <title>{% block title %}SignConnect{% endblock %} — AI Sign Language Translator</title>
+  <link rel="icon"
+    href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤟</text></svg>">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/design.css') }}">
+</head>
+
+<body data-theme="dark">
+  <header class="site-header">
+    <h1>🤟 SignConnect</h1>
+    <nav>
+      <a href="{{ url_for('main.index') }}" data-i18n="nav.home">Home</a>
+      <a href="{{ url_for('main.translator') }}" data-i18n="nav.translator">Translator</a>
+      <a href="{{ url_for('main.dictionary') }}" data-i18n="nav.dictionary">Dictionary</a>
+      <a href="{{ url_for('main.history') }}" data-i18n="nav.history">History</a>
+    </nav>
+    <button id="theme-toggle" type="button" title="Toggle theme (dark/light)" aria-label="Toggle theme"></button>
+  </header>
+  <div class="page-wrap">
+    <main>{% block content %}{% endblock %}</main>
+  </div>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" crossorigin="anonymous"></script>
+  <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js", { scope: "/" })
+        .catch(function (e) { console.debug("SW registration failed:", e); });
+    }
+  </script>
+</body>
+
+</html>

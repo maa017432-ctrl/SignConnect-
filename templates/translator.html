@@ -1,0 +1,294 @@
+{% extends "base.html" %}
+{% block title %}Translator{% endblock %}
+{% block meta_description %}Live sign language translator — camera feed, gesture recognition, and speech synthesis.{%
+endblock %}
+
+{% block content %}
+<div class="translator-grid" style="margin-top:1rem;">
+
+  <!-- ── Settings Modal ── -->
+  <div id="settings-modal" class="settings-modal hidden">
+    <div class="settings-overlay"></div>
+    <div class="settings-panel">
+      <div class="settings-header">
+        <h2 class="settings-title" data-i18n="settings.title">Settings</h2>
+        <button id="settings-close-btn" class="settings-close" type="button">✕</button>
+      </div>
+
+      <div class="settings-content">
+
+        <!-- Camera Section -->
+        <div class="settings-section">
+          <h3 class="settings-section-title" data-i18n="settings.camera">Camera</h3>
+          <div class="settings-item">
+            <label class="settings-label" for="camera-select" data-i18n="settings.camera_device">Camera Device</label>
+            <select id="camera-select" class="settings-input settings-select">
+              <option value="default" data-i18n="settings.camera_default">Default Camera</option>
+              <option value="front" data-i18n="settings.camera_front">Front Camera</option>
+              <option value="back" data-i18n="settings.camera_back">Back Camera</option>
+            </select>
+            <p class="settings-hint" data-i18n="settings.camera_hint">Select which camera to use for gesture detection
+            </p>
+          </div>
+        </div>
+
+        <!-- Detection Section -->
+        <div class="settings-section">
+          <h3 class="settings-section-title" data-i18n="settings.detection">Detection</h3>
+
+          <div class="settings-item">
+            <label class="settings-label" for="settings-threshold-slider" data-i18n="settings.confidence_threshold">
+              Confidence Threshold
+            </label>
+            <div class="settings-slider-group">
+              <input id="settings-threshold-slider" type="range" min="10" max="99" value="75" step="1"
+                class="settings-slider" title="Gesture must exceed this confidence to be recognised">
+              <span class="settings-slider-value" id="settings-threshold-val">75%</span>
+            </div>
+            <p class="settings-hint" data-i18n="settings.confidence_hint">Gesture must exceed this confidence (10% =
+              loose, 99% = strict)</p>
+          </div>
+
+          <div class="settings-item">
+            <label class="settings-checkbox-label" for="settings-training-toggle">
+              <input id="settings-training-toggle" type="checkbox">
+              <span data-i18n="settings.training_mode">Training Mode</span>
+            </label>
+            <p class="settings-hint" data-i18n="settings.training_hint">Show raw prediction data and debugging
+              information</p>
+          </div>
+        </div>
+
+        <!-- Audio Section -->
+        <div class="settings-section">
+          <h3 class="settings-section-title" data-i18n="settings.audio">Audio & Language</h3>
+
+          <div class="settings-item">
+            <label class="settings-label" for="settings-lang-select" data-i18n="settings.language">Language</label>
+            <select id="settings-lang-select" class="settings-input settings-select" data-lang-select>
+              <option value="en">🇺🇸 English</option>
+              <option value="ar">🇸🇦 العربية</option>
+              <option value="fr">🇫🇷 Français</option>
+              <option value="es">🇪🇸 Español</option>
+              <option value="de">🇩🇪 Deutsch</option>
+              <option value="zh">🇨🇳 中文</option>
+              <option value="ja">🇯🇵 日本語</option>
+              <option value="ko">🇰🇷 한국어</option>
+            </select>
+            <p class="settings-hint" data-i18n="settings.language_hint">Language for text-to-speech output</p>
+          </div>
+
+          <div class="settings-item">
+            <label class="settings-checkbox-label" for="settings-audio-toggle">
+              <input id="settings-audio-toggle" type="checkbox" checked>
+              <span data-i18n="settings.speech_output">Speech Output</span>
+            </label>
+            <p class="settings-hint" data-i18n="settings.speech_hint">Enable or disable automatic speech synthesis</p>
+          </div>
+        </div>
+
+        <!-- Appearance Section -->
+        <div class="settings-section">
+          <h3 class="settings-section-title" data-i18n="settings.appearance">Appearance</h3>
+
+          <div class="settings-item">
+            <label class="settings-checkbox-label" for="settings-theme-toggle">
+              <input id="settings-theme-toggle" type="checkbox">
+              <span id="settings-theme-label" data-i18n="settings.light_mode">Light Mode</span>
+            </label>
+            <p class="settings-hint" data-i18n="settings.theme_hint">Switch between dark and light themes</p>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="settings-footer">
+        <button id="settings-reset-btn" class="btn btn-secondary" type="button" data-i18n="settings.reset">Reset to
+          Defaults</button>
+        <button id="settings-save-btn" class="btn btn-primary" type="button" data-i18n="settings.save">Save
+          Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Video panel ── -->
+  <div class="panel video-panel">
+    <h2 data-i18n="translator.live_stream">Live Stream</h2>
+    <div class="video-wrapper">
+      <img id="video-stream" src="" alt="Live sign language feed" width="640" height="480" decoding="async"
+        data-mjpeg-url="{{ url_for('stream.video_feed') }}" data-frame-url="{{ url_for('api.api_camera_frame') }}">
+      <div id="video-overlay" class="video-overlay">
+        <div class="spinner"></div>
+        <span class="overlay-msg" data-i18n="translator.connecting">Connecting to camera…</span>
+      </div>
+    </div>
+
+    <!-- ── User Coaching System ── -->
+    <div id="coaching-container" class="coaching-container hidden">
+      <div id="coaching-message" class="coaching-message">
+        <span id="coaching-icon" class="coaching-icon">ℹ️</span>
+        <span id="coaching-text" class="coaching-text">Coaching feedback will appear here</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Info panel ── -->
+  <div class="panel info-panel">
+
+    <!-- 1. Current gesture -->
+    <h2 data-i18n="translator.current_gesture">Current Gesture</h2>
+    <div class="gesture-row">
+      <div id="recognized-text" class="recognized-text">—</div>
+      <span id="confidence-badge" class="badge low">0%</span>
+    </div>
+
+    <!-- 2. Word-commit progress -->
+    <div class="progress-wrap" title="Hold gesture steadily to commit a word">
+      <div id="commit-progress" class="progress-bar"></div>
+    </div>
+    <p class="progress-hint" id="progress-hint" data-i18n="translator.hold_gesture">Hold a gesture to build a word</p>
+
+    <!-- 3. Sentence output -->
+    <h2 style="margin-top:1.25rem;" data-i18n="translator.sentence">Sentence</h2>
+    <div id="sentence-display" class="sentence-display">…</div>
+
+    <!-- 4. Action buttons -->
+    <div class="controls" style="margin-top:.875rem;">
+      <button id="start-btn" type="button" data-i18n="translator.start">▶ Start</button>
+      <button id="pause-btn" type="button" class="btn-secondary" data-i18n="translator.pause">⏸ Pause</button>
+      <button id="speak-btn" type="button" data-i18n="translator.speak">🔊 Speak</button>
+      <button id="delete-word-btn" type="button" class="btn-secondary" data-i18n="translator.undo">← Undo</button>
+      <button id="clear-btn" type="button" class="btn-secondary btn-danger" data-i18n="translator.clear">🗑
+        Clear</button>
+      <button id="practice-btn" type="button" class="btn-secondary" data-i18n="translator.learn">🎓 Learn</button>
+      <button id="settings-btn" type="button" class="btn-secondary" data-i18n="translator.settings">⚙️ Settings</button>
+    </div>
+
+    <!-- 5. Settings -->
+    <div class="settings-row">
+      <div class="setting-group">
+        <label class="setting-label" for="lang-select" data-i18n="translator.language">Language</label>
+        <select id="lang-select" class="setting-select" data-lang-select>
+          <option value="en">🇺🇸 English</option>
+          <option value="ar">🇸🇦 العربية</option>
+          <option value="fr">🇫🇷 Français</option>
+          <option value="es">🇪🇸 Español</option>
+          <option value="de">🇩🇪 Deutsch</option>
+          <option value="zh">🇨🇳 中文</option>
+          <option value="ja">🇯🇵 日本語</option>
+          <option value="ko">🇰🇷 한국어</option>
+        </select>
+      </div>
+
+      <div class="setting-group" style="flex:1">
+        <label class="setting-label" for="threshold-slider" data-i18n="translator.confidence">
+          Confidence: <strong id="threshold-val">75%</strong>
+        </label>
+        <input id="threshold-slider" type="range" min="10" max="99" value="75" step="1"
+          title="Gesture must exceed this confidence to be recognised">
+      </div>
+
+      <div class="setting-group" style="justify-content:flex-end;padding-bottom:2px;">
+        <label class="training-toggle-label" for="training-mode-toggle">
+          <input id="training-mode-toggle" type="checkbox">
+          <span data-i18n="translator.training">Training</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- 6. Training top-k panel -->
+    <div id="topk-panel" class="topk-panel hidden">
+      <h3 data-i18n="translator.raw_predictions">Raw Top Predictions (pre-threshold)</h3>
+      <ul id="topk-list" class="topk-list"></ul>
+    </div>
+
+    <!-- 6.5 Practice Mode / Gesture Learning Panel -->
+    <div id="practice-panel" class="practice-panel hidden">
+      <div class="practice-header">
+        <h3 data-i18n="translator.learn_gestures">Learn Gestures</h3>
+        <button id="practice-close-btn" class="practice-close" type="button">✕</button>
+      </div>
+
+      <div class="practice-search">
+        <input id="practice-search-input" type="text" class="practice-search-input"
+          placeholder="Search gesture (hello, thank you, yes...)" data-i18n-placeholder="translator.search_gesture">
+      </div>
+
+      <div class="practice-list" id="practice-list">
+        <!-- Dynamically populated gesture list -->
+      </div>
+
+      <div class="practice-visualizer hidden" id="practice-visualizer">
+        <div class="visualizer-header">
+          <h4 id="visualizer-title">Hello</h4>
+          <p id="visualizer-description" class="visualizer-description">Wave hand from right to left</p>
+          <span id="visualizer-difficulty" class="visualizer-badge beginner">Beginner</span>
+        </div>
+
+        <canvas id="gesture-canvas" class="gesture-canvas" width="280" height="360"></canvas>
+
+        <div class="visualizer-info">
+          <p class="info-text">Watch the hand position and try to replicate it.</p>
+        </div>
+
+        <button id="practice-back-btn" class="btn btn-secondary" type="button" data-i18n="translator.back_to_list">←
+          Back to List</button>
+      </div>
+    </div>
+
+    <!-- 7. Session Statistics -->
+    <div id="stats-panel" class="stats-panel" style="margin-top:1.25rem;">
+      <h2 data-i18n="translator.session_stats">Session Stats</h2>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <span class="stat-label" data-i18n="translator.gestures">Gestures</span>
+          <span class="stat-value" id="stat-count">0</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label" data-i18n="translator.avg_confidence">Avg Confidence</span>
+          <span class="stat-value" id="stat-avg-conf">0%</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label" data-i18n="translator.accuracy">Accuracy</span>
+          <span class="stat-value" id="stat-accuracy">0%</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label" data-i18n="translator.duration">Duration</span>
+          <span class="stat-value" id="stat-duration">0s</span>
+        </div>
+      </div>
+      <div class="stats-row">
+        <div class="stat-item">
+          <span class="stat-label" data-i18n="translator.best_gesture">Best Gesture</span>
+          <span class="stat-highlight" id="stat-best">—</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label" data-i18n="translator.most_common">Most Common</span>
+          <span class="stat-highlight" id="stat-common">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 8. Recent history -->
+    <h2 style="margin-top:1.25rem;" data-i18n="translator.recent">Recent</h2>
+    <ul id="history-list" class="history-list"></ul>
+
+    <!-- Status strip -->
+    <div class="status-bar">
+      <span class="status-chip">
+        <span class="status-dot pulsing" id="camera-dot"></span>
+        <span id="camera-status" data-i18n="translator.camera_status">Camera: —</span>
+      </span>
+      <span class="status-chip">
+        <span class="status-dot" id="model-dot"></span>
+        <span id="model-status" data-i18n="translator.model_status">Model: —</span>
+      </span>
+      <span class="status-chip">
+        <span class="status-dot ok"></span>
+        <span id="fps-status" data-i18n="translator.fps">FPS: —</span>
+      </span>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

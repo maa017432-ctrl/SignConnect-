@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Minimal Settings System - Production-ready theme toggle with localStorage">
+    <title>Minimal Settings System</title>
+    <link rel="stylesheet" href="css/settings.css">
+</head>
+
+<body>
+    <header>
+        <h1>⚙️ Settings System Demo</h1>
+        <button id="theme-toggle" type="button" aria-label="Switch to light mode">🌙</button>
+    </header>
+
+    <main>
+        <!-- Introduction Section -->
+        <section class="section">
+            <h2>Welcome</h2>
+            <p>
+                This is a minimal, production-ready settings system that includes theme switching with
+                localStorage persistence. Switch between dark and light modes using the toggle button
+                in the header.
+            </p>
+            <p>
+                The theme preference is automatically saved and restored on page reload. No external
+                dependencies required — just vanilla JavaScript and CSS.
+            </p>
+        </section>
+
+        <!-- Theme Settings Section -->
+        <section class="section">
+            <h2>Theme Settings</h2>
+
+            <div class="settings-panel">
+                <div class="settings-item">
+                    <div class="settings-item-content">
+                        <h3>Appearance</h3>
+                        <p>Choose between dark and light color schemes</p>
+                    </div>
+                    <button id="theme-toggle-button" class="toggle-switch" role="switch" aria-checked="false">
+                        <span class="toggle-switch-knob"></span>
+                    </button>
+                </div>
+
+                <div class="settings-item">
+                    <div class="settings-item-content">
+                        <h3>Current Theme</h3>
+                        <p id="current-theme">Dark</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="button-group">
+                <button class="btn-secondary" onclick="Settings.reset()">Reset to Default</button>
+                <button class="btn-primary" onclick="logSettings()">View Settings</button>
+            </div>
+        </section>
+
+        <!-- Features Section -->
+        <section class="section">
+            <h2>Features</h2>
+
+            <h3 style="margin-top: 1.5rem; margin-bottom: 0.75rem; color: var(--text-primary);">✓ Built-in</h3>
+            <ul style="list-style: none; padding: 0;">
+                <li style="padding: 0.5rem 0; color: var(--text-secondary);">✅ Dark and Light themes</li>
+                <li style="padding: 0.5rem 0; color: var(--text-secondary);">✅ localStorage persistence</li>
+                <li style="padding: 0.5rem 0; color: var(--text-secondary);">✅ Smooth CSS transitions</li>
+                <li style="padding: 0.5rem 0; color: var(--text-secondary);">✅ Prevent FOUC (flash of unstyled content)
+                </li>
+                <li style="padding: 0.5rem 0; color: var(--text-secondary);">✅ Event dispatching for theme changes</li>
+                <li style="padding: 0.5rem 0; color: var(--text-secondary);">✅ Accessibility-friendly (ARIA labels)</li>
+            </ul>
+
+            <h3 style="margin-top: 1.5rem; margin-bottom: 0.75rem; color: var(--text-primary);">🚀 Zero Dependencies
+            </h3>
+            <p>No frameworks, no libraries. Just vanilla JavaScript and CSS variables.</p>
+
+            <div class="info-box">
+                <strong>💡 Tip:</strong> You can easily extend this system to include additional settings
+                like font size, color scheme, language, etc. Just add them to the defaults object in settings.js.
+            </div>
+        </section>
+
+        <!-- Usage Examples -->
+        <section class="section">
+            <h2>Usage Examples</h2>
+
+            <h3 style="margin-top: 1.5rem; margin-bottom: 0.75rem; color: var(--text-primary);">JavaScript API</h3>
+            <pre
+                style="background-color: var(--surface-hover); padding: 1rem; border-radius: 0.5rem; overflow-x: auto; font-size: 0.875rem; line-height: 1.6;"><code>// Initialize (auto on page load)
+Settings.init();
+
+// Toggle theme
+Settings.toggleTheme();
+
+// Get current theme
+const theme = Settings.getTheme();  // Returns 'dark' or 'light'
+
+// Set a setting
+Settings.setSetting('theme', 'light');
+
+// Get a setting
+const theme = Settings.getSetting('theme');
+
+// Get all settings
+const all = Settings.getAll();
+
+// Reset to defaults
+Settings.reset();
+
+// Listen for changes
+window.addEventListener('themeChanged', (event) => {
+  console.log('New theme:', event.detail.theme);
+});
+</code></pre>
+
+            <h3 style="margin-top: 1.5rem; margin-bottom: 0.75rem; color: var(--text-primary);">HTML Integration</h3>
+            <pre
+                style="background-color: var(--surface-hover); padding: 1rem; border-radius: 0.5rem; overflow-x: auto; font-size: 0.875rem; line-height: 1.6;"><code>&lt;!-- Theme toggle button --&gt;
+&lt;button id="theme-toggle" type="button"&gt;🌙&lt;/button&gt;
+
+&lt;!-- Auto-initializes on page load --&gt;
+&lt;script src="static/js/settings.js"&gt;&lt;/script&gt;
+</code></pre>
+
+            <h3 style="margin-top: 1.5rem; margin-bottom: 0.75rem; color: var(--text-primary);">CSS Variables</h3>
+            <pre
+                style="background-color: var(--surface-hover); padding: 1rem; border-radius: 0.5rem; overflow-x: auto; font-size: 0.875rem; line-height: 1.6;"><code>/* Use in your CSS */
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+button {
+  background-color: var(--accent);
+  transition: background-color 0.3s ease;
+}
+
+/* Themes automatically update all variables */
+</code></pre>
+        </section>
+
+        <!-- Performance Section -->
+        <section class="section">
+            <h2>Performance & Best Practices</h2>
+
+            <h3 style="margin-top: 1.5rem; margin-bottom: 0.75rem; color: var(--text-primary);">Optimizations</h3>
+            <ul style="list-style: none; padding: 0;">
+                <li style="padding: 0.5rem 0; color: var(--text-secondary);">⚡ Runs in IIFE to avoid global scope
+                    pollution</li>
+                <li style="padding: 0.5rem 0; color: var(--text-secondary);">⚡ CSS transitions suppressed during initial
+                    load (no FOUC)</li>
+                <li style="padding: 0.5rem 0; color: var(--text-secondary);">⚡ requestAnimationFrame used for smooth
+                    transitions</li>
+                <li style="padding: 0.5rem 0; color: var(--text-secondary);">⚡ Error handling for localStorage access
+                </li>
+                <li style="padding: 0.5rem 0; color: var(--text-secondary);">⚡ Minimal DOM queries and updates</li>
+                <li style="padding: 0.5rem 0; color: var(--text-secondary);">⚡ Single stylesheet with CSS custom
+                    properties</li>
+            </ul>
+
+            <div class="info-box">
+                <strong>📊 Size:</strong> ~2.5 KB JavaScript + ~3 KB CSS (uncompressed).
+                Gzipped: ~1 KB JavaScript + ~1.2 KB CSS.
+            </div>
+        </section>
+
+        <!-- Integration Guide -->
+        <section class="section">
+            <h2>Quick Integration Guide</h2>
+
+            <h3 style="margin-top: 1.5rem; margin-bottom: 0.75rem; color: var(--text-primary);">Step 1: Include Files
+            </h3>
+            <pre
+                style="background-color: var(--surface-hover); padding: 1rem; border-radius: 0.5rem; overflow-x: auto; font-size: 0.875rem; line-height: 1.6;"><code>&lt;link rel="stylesheet" href="static/css/settings.css"&gt;
+&lt;script src="static/js/settings.js"&gt;&lt;/script&gt;
+</code></pre>
+
+            <h3 style="margin-top: 1.5rem; margin-bottom: 0.75rem; color: var(--text-primary);">Step 2: Add HTML
+                Elements</h3>
+            <pre
+                style="background-color: var(--surface-hover); padding: 1rem; border-radius: 0.5rem; overflow-x: auto; font-size: 0.875rem; line-height: 1.6;"><code>&lt;html data-theme="dark"&gt;
+  &lt;header&gt;
+    &lt;button id="theme-toggle" type="button"&gt;🌙&lt;/button&gt;
+  &lt;/header&gt;
+&lt;/html&gt;
+</code></pre>
+
+            <h3 style="margin-top: 1.5rem; margin-bottom: 0.75rem; color: var(--text-primary);">Step 3: Use CSS
+                Variables</h3>
+            <pre
+                style="background-color: var(--surface-hover); padding: 1rem; border-radius: 0.5rem; overflow-x: auto; font-size: 0.875rem; line-height: 1.6;"><code>body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background-color 0.3s ease;
+}
+</code></pre>
+
+            <h3 style="margin-top: 1.5rem; margin-bottom: 0.75rem; color: var(--text-primary);">Step 4: Done!</h3>
+            <p style="color: var(--text-secondary);">
+                Your app now has a professional theme switcher with full persistence.
+            </p>
+        </section>
+
+        <!-- Footer -->
+        <section class="section"
+            style="margin-bottom: 3rem; background-color: var(--surface); border: 1px solid var(--border);">
+            <p style="text-align: center; color: var(--text-muted); margin: 0;">
+                Production-ready settings system • Zero dependencies • Built for modern web apps
+            </p>
+        </section>
+    </main>
+
+    <script>
+        /**
+         * Update the current theme display
+         */
+        function updateThemeDisplay() {
+            const themeDisplay = document.getElementById("current-theme");
+            const currentTheme = Settings.getTheme();
+            themeDisplay.textContent = currentTheme.charAt(0).toUpperCase() + currentTheme.slice(1);
+
+            // Update toggle switch
+            const toggleSwitch = document.getElementById("theme-toggle-button");
+            const isDark = currentTheme === Settings.THEME_DARK;
+            toggleSwitch.classList.toggle("active", !isDark);
+            toggleSwitch.setAttribute("aria-checked", String(!isDark));
+        }
+
+        /**
+         * Log current settings to console
+         */
+        function logSettings() {
+            console.log("Current Settings:", Settings.getAll());
+            alert("Settings logged to console. Open DevTools to view.");
+        }
+
+        /**
+         * Initialize theme display on load
+         */
+        document.addEventListener("DOMContentLoaded", () => {
+            updateThemeDisplay();
+
+            // Update display when theme changes
+            window.addEventListener("themeChanged", () => {
+                updateThemeDisplay();
+            });
+
+            // Setup alternate toggle button
+            const toggleBtn = document.getElementById("theme-toggle-button");
+            if (toggleBtn) {
+                toggleBtn.addEventListener("click", () => {
+                    Settings.toggleTheme();
+                });
+            }
+        });
+    </script>
+</body>
+
+</html>
