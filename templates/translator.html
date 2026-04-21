@@ -113,10 +113,38 @@ endblock %}
 
   <!-- ── Video panel ── -->
   <div class="panel video-panel">
-    <h2 data-i18n="translator.live_stream">Live Stream</h2>
+    <div class="video-panel-header">
+      <span class="video-panel-title" data-i18n="translator.live_stream">Live Stream</span>
+    </div>
     <div class="video-wrapper">
       <img id="video-stream" src="" alt="Live sign language feed" width="640" height="480" decoding="async"
         data-mjpeg-url="{{ url_for('stream.video_feed') }}" data-frame-url="{{ url_for('api.api_camera_frame') }}">
+
+      <!-- AI scanning corner indicators -->
+      <div class="video-scan-corner video-scan-corner--tl"></div>
+      <div class="video-scan-corner video-scan-corner--tr"></div>
+      <div class="video-scan-corner video-scan-corner--bl"></div>
+      <div class="video-scan-corner video-scan-corner--br"></div>
+
+      <!-- Live/Recording badge -->
+      <div class="video-live-badge" id="video-live-badge">
+        <span class="video-live-dot"></span>
+        LIVE
+      </div>
+
+      <!-- FPS badge -->
+      <div class="video-fps-badge" id="video-fps-overlay">
+        <span id="fps-overlay-val">—</span> FPS
+      </div>
+
+      <!-- Confidence meter at bottom -->
+      <div class="confidence-meter-wrap" id="confidence-meter-wrap">
+        <div class="confidence-meter-label">Confidence</div>
+        <div class="confidence-meter-bar">
+          <div class="confidence-meter-fill" id="confidence-meter-fill"></div>
+        </div>
+      </div>
+
       <div id="video-overlay" class="video-overlay">
         <div class="spinner"></div>
         <span class="overlay-msg" data-i18n="translator.connecting">Connecting to camera…</span>
@@ -157,9 +185,9 @@ endblock %}
       <button id="start-btn" type="button" data-i18n="translator.start">▶ Start</button>
       <button id="pause-btn" type="button" class="btn-secondary" data-i18n="translator.pause">⏸ Pause</button>
       <button id="speak-btn" type="button" data-i18n="translator.speak">🔊 Speak</button>
+      <button id="copy-btn" type="button" class="btn-secondary" title="Copy sentence to clipboard">📋 Copy</button>
       <button id="delete-word-btn" type="button" class="btn-secondary" data-i18n="translator.undo">← Undo</button>
-      <button id="clear-btn" type="button" class="btn-secondary btn-danger" data-i18n="translator.clear">🗑
-        Clear</button>
+      <button id="clear-btn" type="button" class="btn-secondary btn-danger" data-i18n="translator.clear">🗑 Clear</button>
       <button id="practice-btn" type="button" class="btn-secondary" data-i18n="translator.learn">🎓 Learn</button>
       <button id="settings-btn" type="button" class="btn-secondary" data-i18n="translator.settings">⚙️ Settings</button>
     </div>

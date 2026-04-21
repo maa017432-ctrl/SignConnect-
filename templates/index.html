@@ -8,18 +8,16 @@ learning.{% endblock %}
   <div class="home-hero-bg"></div>
   <div class="home-shell">
     <div class="home-hero-content">
-      <p class="home-kicker" data-i18n="home.kicker">Real-time AI Translator</p>
-      <h2 data-i18n="home.title">Translate Sign Language Into Text and Speech Instantly</h2>
+      <p class="home-kicker" data-i18n="home.kicker">✨ Real-time AI Translator</p>
+      <h2 data-i18n="home.title">Real-Time Sign Language Translation</h2>
       <p class="home-subtitle" data-i18n="home.subtitle">
-        Real-time sign language translation powered by AI. See your gestures converted to text and speech instantly.
+        Instantly convert sign language gestures into text and speech — powered by AI, MediaPipe, and deep learning.
       </p>
       <div class="home-hero-actions">
-        <a class="btn btn-primary btn-lg" href="{{ url_for('main.translator') }}" data-i18n="home.open_translator">Open
-          Translator</a>
-        <a class="btn btn-secondary btn-lg" href="#home-features" data-i18n="home.explore_features">Explore Features</a>
+        <a class="btn btn-primary btn-lg" href="{{ url_for('main.translator') }}" data-i18n="home.open_translator">▶ Start Camera</a>
+        <a class="btn btn-secondary btn-lg" href="#home-features" data-i18n="home.explore_features">Learn More</a>
       </div>
-      <p class="home-microcopy" data-i18n="home.microcopy">Built for fast recognition, low-latency interaction, and
-        practical daily use.</p>
+      <p class="home-microcopy" data-i18n="home.microcopy">Built for fast recognition, low-latency interaction, and practical daily use.</p>
     </div>
   </div>
 </section>
@@ -28,19 +26,19 @@ learning.{% endblock %}
   <div class="home-shell">
     <div class="home-status-strip">
       <div class="home-status-chip">
-        <span class="home-chip-icon">CAM</span>
+        <span class="home-chip-icon">📷</span>
         <span class="status-dot pulsing" id="camera-dot"></span>
         <span id="camera-status" data-i18n="status.camera">Camera: —</span>
       </div>
       <div class="home-status-chip">
-        <span class="home-chip-icon">AI</span>
+        <span class="home-chip-icon">🤖</span>
         <span class="status-dot" id="model-dot"></span>
-        <span id="model-status" data-i18n="status.model">Model: —</span>
+        <span id="model-status" data-i18n="status.model">AI Ready</span>
       </div>
       <div class="home-status-chip">
-        <span class="home-chip-icon">FPS</span>
-        <span class="status-dot" id="fps-status-dot"></span>
-        <span id="fps-status" data-i18n="status.fps">FPS: —</span>
+        <span class="home-chip-icon">⚡</span>
+        <span class="status-dot ok" id="fps-status-dot"></span>
+        <span id="fps-status" data-i18n="status.fps">GPU Active</span>
       </div>
     </div>
   </div>
@@ -55,40 +53,34 @@ learning.{% endblock %}
 
     <div class="home-feature-grid">
       <article class="home-feature-card">
-        <span class="home-feature-icon">CAM</span>
+        <span class="home-feature-icon">📷</span>
         <h4 data-i18n="home.feature_camera">Live Camera Feed</h4>
-        <p data-i18n="home.feature_camera_desc">Streams webcam frames with robust camera detection and warm-up handling.
-        </p>
+        <p data-i18n="home.feature_camera_desc">Streams webcam frames with robust camera detection and warm-up handling.</p>
       </article>
       <article class="home-feature-card">
-        <span class="home-feature-icon">HND</span>
+        <span class="home-feature-icon">🖐</span>
         <h4 data-i18n="home.feature_mediapipe">MediaPipe Hands</h4>
-        <p data-i18n="home.feature_mediapipe_desc">Captures 21 3D hand landmarks per frame, optimized for real-time
-          inference.</p>
+        <p data-i18n="home.feature_mediapipe_desc">Captures 21 3D hand landmarks per frame, optimized for real-time inference.</p>
       </article>
       <article class="home-feature-card">
-        <span class="home-feature-icon">AI</span>
+        <span class="home-feature-icon">🤖</span>
         <h4 data-i18n="home.feature_classifier">Gesture Classifier</h4>
-        <p data-i18n="home.feature_classifier_desc">Deep learning model predicts gesture labels with confidence-aware
-          behavior.</p>
+        <p data-i18n="home.feature_classifier_desc">Deep learning model predicts gesture labels with confidence-aware behavior.</p>
       </article>
       <article class="home-feature-card">
-        <span class="home-feature-icon">TTS</span>
+        <span class="home-feature-icon">🔊</span>
         <h4 data-i18n="home.feature_tts">Text-to-Speech</h4>
-        <p data-i18n="home.feature_tts_desc">Converts translated text into clear speech with fallback support and
-          caching.</p>
+        <p data-i18n="home.feature_tts_desc">Converts translated text into clear speech with fallback support and caching.</p>
       </article>
       <article class="home-feature-card">
-        <span class="home-feature-icon">SAFE</span>
+        <span class="home-feature-icon">🛡</span>
         <h4 data-i18n="home.feature_graceful">Graceful Degradation</h4>
-        <p data-i18n="home.feature_graceful_desc">Keeps the app usable even if one subsystem becomes temporarily
-          unavailable.</p>
+        <p data-i18n="home.feature_graceful_desc">Keeps the app usable even if one subsystem becomes temporarily unavailable.</p>
       </article>
       <article class="home-feature-card">
-        <span class="home-feature-icon">LOG</span>
+        <span class="home-feature-icon">📋</span>
         <h4 data-i18n="home.feature_history">Translation History</h4>
-        <p data-i18n="home.feature_history_desc">Stores translated sessions with replay support for review and
-          accessibility.</p>
+        <p data-i18n="home.feature_history_desc">Stores translated sessions with replay support for review and accessibility.</p>
       </article>
     </div>
   </div>
@@ -101,8 +93,7 @@ learning.{% endblock %}
         <h4 data-i18n="home.ready_title">Ready to translate in real time?</h4>
         <p data-i18n="home.ready_subtitle">Launch the live translator and start capturing gestures now.</p>
       </div>
-      <a class="btn btn-primary btn-lg" href="{{ url_for('main.translator') }}" data-i18n="home.open_translator">Open
-        Translator</a>
+      <a class="btn btn-primary btn-lg" href="{{ url_for('main.translator') }}" data-i18n="home.open_translator">▶ Start Camera</a>
     </div>
   </div>
 </section>

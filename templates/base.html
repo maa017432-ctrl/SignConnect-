@@ -6,12 +6,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description"
     content="{% block meta_description %}Real-time sign language translation powered by AI, MediaPipe, and deep learning.{% endblock %}">
-  <meta name="theme-color" content="#000000">
+  <meta name="theme-color" content="#0B0F19">
   <title>{% block title %}SignConnect{% endblock %} — AI Sign Language Translator</title>
   <link rel="icon"
     href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤟</text></svg>">
   <link rel="manifest" href="/static/manifest.json">
   <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/design.css') }}">
 </head>
 
@@ -24,19 +27,28 @@
       <a href="{{ url_for('main.dictionary') }}" data-i18n="nav.dictionary">Dictionary</a>
       <a href="{{ url_for('main.history') }}" data-i18n="nav.history">History</a>
     </nav>
-    <button id="theme-toggle" type="button" title="Toggle theme (dark/light)" aria-label="Toggle theme"></button>
+    <button id="theme-toggle" type="button" title="Toggle theme (dark/light)" aria-label="Toggle theme">☀️</button>
   </header>
   <div class="page-wrap">
     <main>{% block content %}{% endblock %}</main>
   </div>
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" crossorigin="anonymous"></script>
   <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/settings.js') }}"></script>
   <script src="{{ url_for('static', filename='js/app.js') }}"></script>
   <script>
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js", { scope: "/" })
         .catch(function (e) { console.debug("SW registration failed:", e); });
     }
+    // Mark active nav link
+    (function () {
+      var links = document.querySelectorAll(".site-header nav a");
+      var path = location.pathname;
+      links.forEach(function (a) {
+        if (a.getAttribute("href") === path) a.classList.add("active");
+      });
+    })();
   </script>
 </body>
 
