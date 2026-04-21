@@ -4,105 +4,148 @@
 learning.{% endblock %}
 
 {% block content %}
+<!-- ── HERO ── -->
 <section class="home-hero">
-  <div class="home-hero-bg"></div>
   <div class="home-shell">
     <div class="home-hero-content">
       <p class="home-kicker" data-i18n="home.kicker">Real-time AI Translator</p>
-      <h2 data-i18n="home.title">Translate Sign Language Into Text and Speech Instantly</h2>
+      <h2 data-i18n="home.title">Translate Sign Language Into<br><span class="gradient-text">Text &amp; Speech</span> Instantly</h2>
       <p class="home-subtitle" data-i18n="home.subtitle">
-        Real-time sign language translation powered by AI. See your gestures converted to text and speech instantly.
+        AI-powered hand gesture recognition that converts sign language to text and speech in real time — built for speed, accessibility, and daily use.
       </p>
       <div class="home-hero-actions">
-        <a class="btn btn-primary btn-lg" href="{{ url_for('main.translator') }}" data-i18n="home.open_translator">Open
-          Translator</a>
+        <a class="btn btn-primary btn-lg" href="{{ url_for('main.translator') }}" data-i18n="home.open_translator">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M10.804 8 5 4.633v6.734L10.804 8zm.792-.696a.802.802 0 0 1 0 1.392l-6.363 3.692C4.713 12.69 4 12.345 4 11.692V4.308c0-.653.713-.998 1.233-.696l6.363 3.692z"/>
+          </svg>
+          Start Translating
+        </a>
         <a class="btn btn-secondary btn-lg" href="#home-features" data-i18n="home.explore_features">Explore Features</a>
       </div>
-      <p class="home-microcopy" data-i18n="home.microcopy">Built for fast recognition, low-latency interaction, and
-        practical daily use.</p>
+      <p class="home-microcopy" data-i18n="home.microcopy">No sign-up needed. Works in your browser.</p>
+    </div>
+    <div class="home-hero-visual">
+      <div class="home-mockup">
+        <div class="home-mockup-head">
+          <span></span><span></span><span></span>
+          <span style="margin-left:auto;font-size:10px;color:var(--text-muted);font-family:var(--font-mono);">SignConnect v2</span>
+        </div>
+        <div class="home-mockup-body">
+          <div class="home-mockup-frame">
+            <div class="home-mockup-scanline"></div>
+            <!-- Scanning corners -->
+            <div style="position:absolute;top:8px;right:8px;width:20px;height:20px;border-top:2px solid var(--color-primary-light);border-right:2px solid var(--color-primary-light);border-radius:0 3px 0 0;z-index:2;opacity:0.8;"></div>
+            <div style="position:absolute;bottom:8px;left:8px;width:20px;height:20px;border-bottom:2px solid var(--color-primary-light);border-left:2px solid var(--color-primary-light);border-radius:0 0 0 3px;z-index:2;opacity:0.8;"></div>
+            <!-- Hand wireframe -->
+            <div class="home-palm-wire"></div>
+            <div class="home-joint home-j1"></div>
+            <div class="home-joint home-j2"></div>
+            <div class="home-joint home-j3"></div>
+            <div class="home-joint home-j4"></div>
+            <div class="home-joint home-j5"></div>
+            <div class="home-joint home-j6"></div>
+            <div class="home-joint home-j7"></div>
+            <div class="home-joint home-j8"></div>
+            <!-- LIVE badge in mockup -->
+            <div style="position:absolute;top:10px;left:10px;z-index:3;" aria-hidden="true">
+              <span class="badge-live active">LIVE</span>
+            </div>
+          </div>
+          <div class="home-mockup-output">
+            <div class="home-output-label">DETECTED GESTURE</div>
+            <div class="home-output-word">Hello 👋</div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </section>
 
+<!-- ── STATUS STRIP ── -->
 <section class="home-status-wrap" aria-label="System status">
   <div class="home-shell">
     <div class="home-status-strip">
       <div class="home-status-chip">
-        <span class="home-chip-icon">CAM</span>
+        <span class="home-chip-icon">📷</span>
         <span class="status-dot pulsing" id="camera-dot"></span>
-        <span id="camera-status" data-i18n="status.camera">Camera: —</span>
+        <span id="camera-status" data-i18n="status.camera">Camera: Checking…</span>
       </div>
       <div class="home-status-chip">
-        <span class="home-chip-icon">AI</span>
+        <span class="home-chip-icon">🤖</span>
         <span class="status-dot" id="model-dot"></span>
-        <span id="model-status" data-i18n="status.model">Model: —</span>
+        <span id="model-status" data-i18n="status.model">AI Model: Checking…</span>
       </div>
       <div class="home-status-chip">
-        <span class="home-chip-icon">FPS</span>
+        <span class="home-chip-icon">⚡</span>
         <span class="status-dot" id="fps-status-dot"></span>
         <span id="fps-status" data-i18n="status.fps">FPS: —</span>
+      </div>
+      <div class="home-status-chip">
+        <span class="home-chip-icon">🎤</span>
+        <span class="status-dot ok"></span>
+        <span>Speech: Ready</span>
       </div>
     </div>
   </div>
 </section>
 
+<!-- ── FEATURES ── -->
 <section id="home-features" class="home-features">
   <div class="home-shell">
     <div class="home-features-head">
-      <h3 data-i18n="home.features_title">Everything You Need for Real-Time Sign Translation</h3>
-      <p data-i18n="home.features_subtitle">Structured for speed, clarity, and reliable communication.</p>
+      <h3 data-i18n="home.features_title">Everything You Need for<br><span class="gradient-text">Real-Time Sign Translation</span></h3>
+      <p data-i18n="home.features_subtitle">Structured for speed, clarity, and reliable communication with zero compromise.</p>
     </div>
 
     <div class="home-feature-grid">
       <article class="home-feature-card">
-        <span class="home-feature-icon">CAM</span>
+        <div class="home-feature-icon" aria-hidden="true">📷</div>
         <h4 data-i18n="home.feature_camera">Live Camera Feed</h4>
-        <p data-i18n="home.feature_camera_desc">Streams webcam frames with robust camera detection and warm-up handling.
-        </p>
+        <p data-i18n="home.feature_camera_desc">Streams webcam frames with robust camera detection, glow indicators, and warm-up handling for instant readiness.</p>
       </article>
       <article class="home-feature-card">
-        <span class="home-feature-icon">HND</span>
+        <div class="home-feature-icon" aria-hidden="true">✋</div>
         <h4 data-i18n="home.feature_mediapipe">MediaPipe Hands</h4>
-        <p data-i18n="home.feature_mediapipe_desc">Captures 21 3D hand landmarks per frame, optimized for real-time
-          inference.</p>
+        <p data-i18n="home.feature_mediapipe_desc">Captures 21 3D hand landmarks per frame with sub-20ms latency, optimized for real-time inference.</p>
       </article>
       <article class="home-feature-card">
-        <span class="home-feature-icon">AI</span>
-        <h4 data-i18n="home.feature_classifier">Gesture Classifier</h4>
-        <p data-i18n="home.feature_classifier_desc">Deep learning model predicts gesture labels with confidence-aware
-          behavior.</p>
+        <div class="home-feature-icon" aria-hidden="true">🧠</div>
+        <h4 data-i18n="home.feature_classifier">AI Gesture Classifier</h4>
+        <p data-i18n="home.feature_classifier_desc">Deep learning model predicts gesture labels with confidence scoring, temporal smoothing, and coaching feedback.</p>
       </article>
       <article class="home-feature-card">
-        <span class="home-feature-icon">TTS</span>
+        <div class="home-feature-icon" aria-hidden="true">🔊</div>
         <h4 data-i18n="home.feature_tts">Text-to-Speech</h4>
-        <p data-i18n="home.feature_tts_desc">Converts translated text into clear speech with fallback support and
-          caching.</p>
+        <p data-i18n="home.feature_tts_desc">Converts translated text into clear speech instantly with multi-language support, fallback, and audio caching.</p>
       </article>
       <article class="home-feature-card">
-        <span class="home-feature-icon">SAFE</span>
+        <div class="home-feature-icon" aria-hidden="true">🛡️</div>
         <h4 data-i18n="home.feature_graceful">Graceful Degradation</h4>
-        <p data-i18n="home.feature_graceful_desc">Keeps the app usable even if one subsystem becomes temporarily
-          unavailable.</p>
+        <p data-i18n="home.feature_graceful_desc">Keeps the app fully usable even when subsystems become temporarily unavailable — no crashes, just adapts.</p>
       </article>
       <article class="home-feature-card">
-        <span class="home-feature-icon">LOG</span>
+        <div class="home-feature-icon" aria-hidden="true">📋</div>
         <h4 data-i18n="home.feature_history">Translation History</h4>
-        <p data-i18n="home.feature_history_desc">Stores translated sessions with replay support for review and
-          accessibility.</p>
+        <p data-i18n="home.feature_history_desc">Stores every translated session with timestamps and audio replay for review, accessibility, and learning.</p>
       </article>
     </div>
   </div>
 </section>
 
+<!-- ── CTA ── -->
 <section class="home-mini-cta">
   <div class="home-shell">
     <div class="home-mini-cta-box">
       <div>
         <h4 data-i18n="home.ready_title">Ready to translate in real time?</h4>
-        <p data-i18n="home.ready_subtitle">Launch the live translator and start capturing gestures now.</p>
+        <p data-i18n="home.ready_subtitle">Launch the AI translator and start capturing gestures instantly.</p>
       </div>
-      <a class="btn btn-primary btn-lg" href="{{ url_for('main.translator') }}" data-i18n="home.open_translator">Open
-        Translator</a>
+      <div style="display:flex;gap:var(--space-3);flex-wrap:wrap;">
+        <a class="btn btn-primary btn-lg" href="{{ url_for('main.translator') }}" data-i18n="home.open_translator">
+          Open Translator →
+        </a>
+        <a class="btn btn-secondary btn-lg" href="{{ url_for('main.dictionary') }}">View Dictionary</a>
+      </div>
     </div>
   </div>
 </section>

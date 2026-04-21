@@ -6,25 +6,40 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description"
     content="{% block meta_description %}Real-time sign language translation powered by AI, MediaPipe, and deep learning.{% endblock %}">
-  <meta name="theme-color" content="#000000">
+  <meta name="theme-color" content="#080C14">
   <title>{% block title %}SignConnect{% endblock %} — AI Sign Language Translator</title>
   <link rel="icon"
     href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤟</text></svg>">
   <link rel="manifest" href="/static/manifest.json">
   <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/design.css') }}">
 </head>
 
 <body data-theme="dark">
   <header class="site-header">
-    <h1>🤟 SignConnect</h1>
+    <a href="{{ url_for('main.index') }}" class="site-header-logo" aria-label="SignConnect Home">
+      <div class="logo-icon" aria-hidden="true">🤟</div>
+      <span class="logo-text">Sign<span>Connect</span></span>
+    </a>
     <nav>
       <a href="{{ url_for('main.index') }}" data-i18n="nav.home">Home</a>
       <a href="{{ url_for('main.translator') }}" data-i18n="nav.translator">Translator</a>
       <a href="{{ url_for('main.dictionary') }}" data-i18n="nav.dictionary">Dictionary</a>
       <a href="{{ url_for('main.history') }}" data-i18n="nav.history">History</a>
     </nav>
-    <button id="theme-toggle" type="button" title="Toggle theme (dark/light)" aria-label="Toggle theme"></button>
+    <div class="site-header-actions">
+      <button id="theme-toggle" type="button" title="Toggle theme" aria-label="Toggle dark/light mode">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" id="theme-icon-moon" aria-hidden="true">
+          <path d="M6 .278a.768.768 0 0 1 .08.858 7.208 7.208 0 0 0-.878 3.46c0 4.021 3.278 7.277 7.318 7.277.527 0 1.04-.055 1.533-.16a.787.787 0 0 1 .81.316.733.733 0 0 1-.031.893A8.349 8.349 0 0 1 8.344 16C3.734 16 0 12.286 0 7.71 0 4.266 2.114 1.312 5.124.06A.752.752 0 0 1 6 .278z"/>
+        </svg>
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" id="theme-icon-sun" aria-hidden="true" style="display:none">
+          <path d="M8 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6zm0 1a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM8 0a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 0zm0 13a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 13zm8-5a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h2a.5.5 0 0 1 .5.5zM3 8a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h2A.5.5 0 0 1 3 8zm10.657-5.657a.5.5 0 0 1 0 .707l-1.414 1.415a.5.5 0 1 1-.707-.708l1.414-1.414a.5.5 0 0 1 .707 0zm-9.193 9.193a.5.5 0 0 1 0 .707L3.05 13.657a.5.5 0 0 1-.707-.707l1.414-1.414a.5.5 0 0 1 .707 0zm9.193 2.121a.5.5 0 0 1-.707 0l-1.414-1.414a.5.5 0 0 1 .707-.707l1.414 1.414a.5.5 0 0 1 0 .707zM4.464 4.465a.5.5 0 0 1-.707 0L2.343 3.05a.5.5 0 1 1 .707-.707l1.414 1.414a.5.5 0 0 1 0 .708z"/>
+        </svg>
+      </button>
+      <div class="nav-avatar" title="User" aria-label="User account">SC</div>
+    </div>
   </header>
   <div class="page-wrap">
     <main>{% block content %}{% endblock %}</main>
@@ -33,6 +48,40 @@
   <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
   <script src="{{ url_for('static', filename='js/app.js') }}"></script>
   <script>
+    // Update theme icon and active nav link on load
+    (function() {
+      var theme = document.documentElement.getAttribute('data-theme') || 'dark';
+      var moonIcon = document.getElementById('theme-icon-moon');
+      var sunIcon = document.getElementById('theme-icon-sun');
+      if (theme === 'light') {
+        if (moonIcon) moonIcon.style.display = 'none';
+        if (sunIcon) sunIcon.style.display = '';
+      }
+      // Mark active nav link
+      var path = window.location.pathname;
+      var links = document.querySelectorAll('.site-header nav a');
+      links.forEach(function(link) {
+        if (link.getAttribute('href') === path || (path !== '/' && link.getAttribute('href') !== '/' && path.startsWith(link.getAttribute('href')))) {
+          link.classList.add('active');
+        }
+      });
+    })();
+
+    // Swap icons when theme changes
+    var origApplyTheme = window.__origApplyTheme;
+    document.addEventListener('themeChanged', function(e) {
+      var theme = e.detail && e.detail.theme;
+      var moonIcon = document.getElementById('theme-icon-moon');
+      var sunIcon = document.getElementById('theme-icon-sun');
+      if (theme === 'light') {
+        if (moonIcon) moonIcon.style.display = 'none';
+        if (sunIcon) sunIcon.style.display = '';
+      } else {
+        if (moonIcon) moonIcon.style.display = '';
+        if (sunIcon) sunIcon.style.display = 'none';
+      }
+    });
+
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js", { scope: "/" })
         .catch(function (e) { console.debug("SW registration failed:", e); });

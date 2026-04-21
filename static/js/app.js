@@ -900,6 +900,20 @@
   function applyTheme(theme) {
     document.documentElement.setAttribute("data-theme", theme || "dark");
     document.body.setAttribute("data-theme", theme || "dark");
+    // Dispatch event for navbar icon swap
+    document.dispatchEvent(new CustomEvent("themeChanged", { detail: { theme: theme || "dark" } }));
+    // Update navbar theme icons
+    const moonIcon = document.getElementById("theme-icon-moon");
+    const sunIcon = document.getElementById("theme-icon-sun");
+    if (moonIcon && sunIcon) {
+      if (theme === "light") {
+        moonIcon.style.display = "none";
+        sunIcon.style.display = "";
+      } else {
+        moonIcon.style.display = "";
+        sunIcon.style.display = "none";
+      }
+    }
   }
 
   /* ── Status dot helpers ───────────────────────────────────── */
