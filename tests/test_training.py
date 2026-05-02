@@ -221,6 +221,7 @@ def test_dataset_sequence_length_mismatch_exits(tmp_path) -> None:
         [sys.executable, str(SCRIPTS_DIR / "train_temporal.py"), "--data", str(npz_path)],
         capture_output=True,
         text=True,
+        timeout=30,
     )
     assert result.returncode != 0
     assert "ERROR" in result.stdout or "ERROR" in result.stderr

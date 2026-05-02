@@ -173,8 +173,8 @@ def _split_indices(
     rng = np.random.default_rng(seed)
 
     if split_mode == "signer-grouped" and signer_ids is not None and len(signer_ids):
-        unique_signers = sorted(set(int(s) for s in signer_ids if s >= 0))
-        rng.shuffle(unique_signers := np.asarray(unique_signers))
+        unique_signers = np.asarray(sorted(set(int(s) for s in signer_ids if s >= 0)))
+        rng.shuffle(unique_signers)
         n = len(unique_signers)
         n_test = max(1, int(round(n * 0.15)))
         n_val = max(1, int(round(n * 0.15)))

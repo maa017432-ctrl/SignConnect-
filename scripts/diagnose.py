@@ -59,7 +59,7 @@ def _check_env() -> dict[str, str]:
 
     print(f"SEQUENCE_LENGTH : {sequence_length}")
     print(f"LABELS_COUNT    : {labels_count}")
-    return {"model_type": model_type, "sequence_length": sequence_length, "labels_count": labels_count}
+    return {"model_type": model_type, "sequence_length": sequence_length, "LABELS_COUNT": labels_count}
 
 
 print(f"Python: {sys.version}")
@@ -115,7 +115,7 @@ if tf is not None:
         print(f"Label map loaded: {label_count} labels")
 
         # Cross-check LABELS_COUNT env vs label_map
-        env_labels = env_vars.get("labels_count", "?")
+        env_labels = env_vars.get("LABELS_COUNT", "?")
         if env_labels.isdigit() and int(env_labels) != label_count:
             print(
                 f"  ← MISMATCH: LABELS_COUNT env={env_labels} but label_map has {label_count} entries"
