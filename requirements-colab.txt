@@ -1,0 +1,12 @@
+# Colab/GPU training dependencies for SignConnect WLASL pipeline.
+# Install in Colab with:
+#   !pip install -r requirements-colab.txt
+#
+# These are the only packages needed for extraction + training.
+# The full Flask web app runtime (flask, waitress, etc.) is NOT required here.
+tensorflow==2.15.1
+numpy>=1.26.0
+opencv-python-headless>=4.9.0
+mediapipe==0.10.9
+protobuf>=3.20.0,<4.0.0
+pandas>=2.0.0
