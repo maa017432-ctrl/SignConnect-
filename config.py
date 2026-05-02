@@ -27,14 +27,12 @@ class Config:
         self.SESSION_COOKIE_SAMESITE = "Lax"
         self.SESSION_COOKIE_SECURE = not self.DEBUG
 
-        # ── Security: crash hard if running in production with the default key ──
+        # ── Security: fail hard if running in production with the default key ──
         if not self.DEBUG and self.SECRET_KEY == _DEFAULT_SECRET:
-            print(
+            raise RuntimeError(
                 "\n[FATAL] SECRET_KEY is set to the insecure default value.\n"
-                "Set a strong SECRET_KEY in your .env file before running in production.\n",
-                file=sys.stderr,
+                "Set a strong SECRET_KEY in your .env file before running in production.\n"
             )
-            sys.exit(1)
 
         self.HOST = os.getenv("HOST", "0.0.0.0")
         self.PORT = int(os.getenv("PORT", "5000"))
@@ -57,12 +55,10 @@ class Config:
         # Leave blank in dev to skip the check; set in production .env
         self.API_KEY = os.getenv("API_KEY", "")
         if not self.DEBUG and not self.API_KEY:
-            print(
+            raise RuntimeError(
                 "\n[FATAL] API_KEY is required for production admin endpoints.\n"
-                "Set API_KEY in your .env file before running in production.\n",
-                file=sys.stderr,
+                "Set API_KEY in your .env file before running in production.\n"
             )
-            sys.exit(1)
 
         self.CAMERA_INDEX = int(os.getenv("CAMERA_INDEX", "0"))
         self.MODEL_INPUT_DIM = int(os.getenv("MODEL_INPUT_DIM", str(MODEL_INPUT_DIM)))
