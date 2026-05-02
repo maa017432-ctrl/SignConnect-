@@ -90,7 +90,7 @@ class GestureDetector:
 
             annotated = frame.copy()
 
-            hands_data: list[np.ndarray] = []
+            hands_data: list[tuple[float, np.ndarray]] = []
             for hand_landmarks in results.multi_hand_landmarks[:2]:
                 self._drawing_utils.draw_landmarks(
                     annotated, hand_landmarks, self._hands_module.HAND_CONNECTIONS
@@ -103,12 +103,18 @@ class GestureDetector:
                     ],
                     dtype=np.float32,
                 )
-                hands_data.append(flat)
+                mean_x = float(
+                    sum(lm.x for lm in hand_landmarks.landmark)
+                    / max(1, len(hand_landmarks.landmark))
+                )
+                hands_data.append((mean_x, flat))
+
+            hands_data.sort(key=lambda item: item[0])
 
             if len(hands_data) == 1:
-                hands_data.append(np.zeros(63, dtype=np.float32))
+                hands_data.append((2.0, np.zeros(63, dtype=np.float32)))
 
-            flattened = np.concatenate(hands_data)
+            flattened = np.concatenate([hands_data[0][1], hands_data[1][1]])
             return annotated, flattened
         except Exception as error:
             LOGGER.warning("Hand landmark detection failed: %s", error)

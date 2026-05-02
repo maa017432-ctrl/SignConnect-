@@ -61,6 +61,17 @@ class TestGetAllLabels:
         t = Translator(str(p))
         assert t.get_all_labels() == []
 
+    def test_reload_refreshes_label_map(self, tmp_path: Path) -> None:
+        p = tmp_path / "label_map.json"
+        p.write_text(json.dumps({"0": "hello"}), encoding="utf-8")
+        t = Translator(str(p))
+
+        p.write_text(json.dumps({"0": "thanks", "1": "yes"}), encoding="utf-8")
+        t.reload()
+
+        assert t.get_label(0) == "thanks"
+        assert t.get_label(1) == "yes"
+
 
 # ── Graceful degradation ──────────────────────────────────────────────────────
 

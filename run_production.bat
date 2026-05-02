@@ -1,5 +1,5 @@
 @echo off
-REM SignConnect — Production HTTP server (Waitress)
+REM SignConnect - Production HTTP server (Waitress)
 REM Usage: run_production.bat
 REM
 REM NOTE: WebSocket connections fall back to HTTP long-polling in this mode.

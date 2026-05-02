@@ -20,6 +20,12 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from model_contract import HAND_DIM, MODEL_INPUT_DIM
+
 # ── Dependency checks ──────────────────────────────────────────────────────
 try:
     import numpy as np
@@ -38,14 +44,12 @@ except ImportError:
     sys.exit("ERROR: tensorflow not installed. Run: pip install tensorflow==2.15.1")
 
 # ── Paths ──────────────────────────────────────────────────────────────────
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATA_CSV     = PROJECT_ROOT / "data" / "landmarks.csv"
 MODEL_OUT    = PROJECT_ROOT / "models" / "gesture_model.h5"
 LABEL_MAP_OUT= PROJECT_ROOT / "models" / "label_map.json"
 
 # ── Model architecture (must match ai_model.py expectations) ───────────────
-INPUT_DIM = 126  # 2 hands × 21 landmarks × 3 coords (x, y, z)
-HAND_DIM = 63   # 21 landmarks × 3 coords per hand
+INPUT_DIM = MODEL_INPUT_DIM  # 2 hands × 21 landmarks × 3 coords (x, y, z)
 ALPHABET_LABELS = {chr(code) for code in range(ord("A"), ord("Z") + 1)} | {
     chr(code) for code in range(ord("a"), ord("z") + 1)
 }
@@ -55,7 +59,7 @@ def build_model(num_classes: int, dropout_rate: float = 0.4) -> keras.Sequential
     """Build the MLP classifier.
 
     Architecture:
-        Input(63) → Dense(256, ReLU) → BN → Dropout(0.4)
+        Input(126) → Dense(256, ReLU) → BN → Dropout(0.4)
                  → Dense(256, ReLU) → BN → Dropout(0.3)
                  → Dense(128, ReLU) → BN → Dropout(0.2)
                  → Dense(num_classes, Softmax)
@@ -550,6 +554,9 @@ def main() -> None:
 
     # ── Results ────────────────────────────────────────────────────────────
     best_val_acc = max(history.history.get("val_accuracy", [0]))
+    demo_marker_path = MODEL_OUT.with_suffix(".demo")
+    if demo_marker_path.exists():
+        demo_marker_path.unlink()
     print(f"\n{'='*54}")
     print(f"  Best validation accuracy : {best_val_acc:.4f} ({best_val_acc*100:.1f}%)")
     print(f"  Model saved to           : {MODEL_OUT}")

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from flask import Blueprint, current_app, jsonify, render_template, send_from_directory
+from flask import Blueprint, current_app, render_template, send_from_directory, session
 from flask.wrappers import Response
 
 from database.db import get_connection
@@ -11,16 +11,30 @@ from database.db import get_connection
 main_bp = Blueprint("main", __name__)
 
 
+def _user_ctx() -> dict:
+    """Return common user context for templates."""
+    return {
+        "current_user": {
+            "id": session.get("user_id"),
+            "email": session.get("user_email", ""),
+            "name": session.get("user_name", ""),
+            "is_authenticated": bool(session.get("user_id")),
+        }
+    }
+
+
 @main_bp.get("/")
 def index() -> str:
     """Render project landing page."""
-    return render_template("index.html")
+    return render_template("index.html", **_user_ctx())
 
 
 @main_bp.get("/translator")
 def translator() -> str:
     """Render live translation interface."""
-    return render_template("translator.html")
+    classifier = current_app.extensions.get("classifier")
+    demo_mode = classifier.is_demo_mode if classifier else True
+    return render_template("translator.html", demo_mode=demo_mode, **_user_ctx())
 
 
 @main_bp.get("/sw.js")
@@ -48,12 +62,23 @@ def history() -> str:
             LIMIT 50
             """
         ).fetchall()
-    return render_template("history.html", rows=rows)
+    return render_template("history.html", rows=rows, **_user_ctx())
 
 
 @main_bp.get("/dictionary")
 def dictionary() -> str:
     """Render the gesture dictionary page."""
-    translator = current_app.extensions["translator"]
-    labels = translator.get_all_labels()
-    return render_template("dictionary.html", labels=labels)
+    translator_ext = current_app.extensions["translator"]
+    labels = translator_ext.get_all_labels()
+    return render_template("dictionary.html", labels=labels, **_user_ctx())
+
+
+@main_bp.get("/settings")
+def settings() -> str:
+    """Render the settings page."""
+    classifier = current_app.extensions.get("classifier")
+    return render_template(
+        "settings.html",
+        confidence_threshold=classifier.confidence_threshold if classifier else 0.7,
+        **_user_ctx(),
+    )

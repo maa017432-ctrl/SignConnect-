@@ -28,11 +28,13 @@ _TARGET_FPS = 30
 _prediction_lock = threading.Lock()
 
 
-def _placeholder_frame(text: str = "Camera Not Found") -> bytes:
-    """Generate a fallback JPEG frame with status text."""
-    image = Image.new("RGB", (640, 480), color=(30, 30, 30))
-    draw = ImageDraw.Draw(image)
-    draw.text((220, 220), text, fill=(255, 80, 80))
+def _placeholder_frame(text: str = "") -> bytes:
+    """Generate a fallback 1x1 JPEG frame.
+    
+    This keeps the MJPEG stream alive without triggering the frontend
+    to hide the 'Connecting to camera' overlay (since naturalWidth <= 1).
+    """
+    image = Image.new("RGB", (1, 1), color=(0, 0, 0))
     buffer = BytesIO()
     image.save(buffer, format="JPEG")
     return buffer.getvalue()
@@ -77,7 +79,9 @@ def _annotate_and_encode_jpeg(app: Any, frame: np.ndarray) -> bytes | None:
         top_candidates: list[dict[str, object]] = []
 
         if landmarks is not None:
+            inference_start = time.perf_counter()
             details = classifier.predict_with_details(landmarks)
+            inference_ms = (time.perf_counter() - inference_start) * 1000.0
             label_index = int(details.get("label_index", -1))
             raw_confidence = float(details.get("confidence", 0.0))
             raw_label = translator.get_label(label_index) if label_index >= 0 else None
@@ -89,6 +93,11 @@ def _annotate_and_encode_jpeg(app: Any, frame: np.ndarray) -> bytes | None:
                 }
                 for candidate in details.get("top_candidates", [])
             ]
+        elif hasattr(classifier, "reset_sequence"):
+            classifier.reset_sequence()
+            inference_ms = None
+        else:
+            inference_ms = None
 
         if smoother is not None:
             smoothed_label, _ = smoother.update(raw_label, raw_confidence)
@@ -127,6 +136,8 @@ def _annotate_and_encode_jpeg(app: Any, frame: np.ndarray) -> bytes | None:
             "current_run": sentence_builder.current_run if sentence_builder else 0,
             "stable_frames": sentence_builder.stable_frames if sentence_builder else 15,
             "is_cooling_down": sentence_builder.is_cooling_down if sentence_builder else False,
+            "model_type": getattr(classifier, "model_type", "unknown"),
+            "inference_ms": float(inference_ms) if inference_ms is not None else None,
         }
         with _prediction_lock:
             app.extensions["latest_prediction"] = {
@@ -134,6 +145,8 @@ def _annotate_and_encode_jpeg(app: Any, frame: np.ndarray) -> bytes | None:
                 "confidence": float(raw_confidence),
                 "smoothed_label": smoothed_label,
                 "top_candidates": list(top_candidates),
+                "model_type": getattr(classifier, "model_type", "unknown"),
+                "inference_ms": float(inference_ms) if inference_ms is not None else None,
             }
 
         _emit_prediction(app, prediction_payload)

@@ -6,10 +6,21 @@ from __future__ import annotations
 import json
 import logging
 import random
+from collections import deque
 from pathlib import Path
 from threading import Lock
 
 import numpy as np
+
+from model_contract import (
+    DEFAULT_MODEL_TYPE,
+    MODEL_INPUT_DIM,
+    SEQUENCE_LENGTH,
+    TEMPORAL_MODEL_TYPE,
+    model_input_dim,
+    model_output_count,
+    model_sequence_length,
+)
 
 try:
     from tensorflow.keras.models import load_model
@@ -35,14 +46,46 @@ class GestureClassifier:
                     cls._instance._initialized = False
         return cls._instance
 
+    @classmethod
+    def reset_instance(cls) -> None:
+        """Reset the singleton instance for tests and controlled reinitialization."""
+        with cls._instance_lock:
+            cls._instance = None
+
     def __init__(
-        self, model_path: str, confidence_threshold: float, labels_count: int
+        self,
+        model_path: str,
+        confidence_threshold: float,
+        labels_count: int,
+        model_input_dim: int = MODEL_INPUT_DIM,
+        model_type: str = DEFAULT_MODEL_TYPE,
+        sequence_length: int = SEQUENCE_LENGTH,
     ) -> None:
+        config_signature = (
+            str(Path(model_path)),
+            float(confidence_threshold),
+            int(labels_count),
+            int(model_input_dim),
+            model_type,
+            int(sequence_length),
+        )
         if getattr(self, "_initialized", False):
+            if getattr(self, "_config_signature", None) != config_signature:
+                LOGGER.warning(
+                    "GestureClassifier singleton already initialized; ignoring "
+                    "new configuration %s",
+                    config_signature,
+                )
             return
         self.model_path = Path(model_path)
         self.confidence_threshold = confidence_threshold
         self.labels_count = labels_count
+        self.model_input_dim = model_input_dim
+        self.model_type = model_type
+        self.sequence_length = sequence_length
+        self._sequence_buffer: deque[np.ndarray] = deque(maxlen=sequence_length)
+        self._predict_lock: Lock = Lock()
+        self._config_signature = config_signature
         self.model = None
         self._available = False
         self._demo_mode = True
@@ -58,6 +101,7 @@ class GestureClassifier:
     def reload(self) -> bool:
         """Re-initialize from disk, returning True on success."""
         self._try_init()
+        self.reset_sequence()
         return self._available
 
     @property
@@ -65,8 +109,49 @@ class GestureClassifier:
         """Return whether predictions are currently using generated fake outputs."""
         return self._demo_mode
 
+    @property
+    def has_norm_stats(self) -> bool:
+        """Return whether compatible normalisation statistics are loaded."""
+        return self._norm_mean is not None and self._norm_std is not None
+
+    def _validate_model_contract(self) -> None:
+        """Validate loaded model shape against the live inference contract."""
+        if self.model is None:
+            raise RuntimeError("Model is not loaded")
+        if self.model_type not in (DEFAULT_MODEL_TYPE, TEMPORAL_MODEL_TYPE):
+            raise RuntimeError(
+                f"Unsupported live model type {self.model_type!r}; "
+                f"expected {DEFAULT_MODEL_TYPE!r} or {TEMPORAL_MODEL_TYPE!r}"
+            )
+
+        input_shape = getattr(self.model, "input_shape", None)
+        output_shape = getattr(self.model, "output_shape", None)
+        expected_input = int(self.model_input_dim)
+        actual_input = model_input_dim(input_shape)
+        actual_outputs = model_output_count(output_shape)
+
+        if actual_input != expected_input:
+            raise RuntimeError(
+                f"Model input dimension mismatch: expected {expected_input}, "
+                f"got {actual_input} from shape {input_shape!r}"
+            )
+        if self.model_type == TEMPORAL_MODEL_TYPE:
+            actual_sequence_length = model_sequence_length(input_shape)
+            if actual_sequence_length != self.sequence_length:
+                raise RuntimeError(
+                    "Model sequence length mismatch: expected "
+                    f"{self.sequence_length}, got {actual_sequence_length} "
+                    f"from shape {input_shape!r}"
+                )
+        if actual_outputs != self.labels_count:
+            raise RuntimeError(
+                f"Model output count mismatch: expected {self.labels_count}, "
+                f"got {actual_outputs} from shape {output_shape!r}"
+            )
+
     def _try_init(self) -> None:
         """Try to initialize TensorFlow model backend without raising errors."""
+        self.reset_sequence()
         self._available = False
         self._demo_mode = True
         self.model = None
@@ -81,7 +166,22 @@ class GestureClassifier:
                 stats = np.load(str(norm_path))
                 self._norm_mean = stats["mean"]
                 self._norm_std  = stats["std"]
-                LOGGER.info("Loaded normalisation stats from %s", norm_path)
+                expected_shape = (self.model_input_dim,)
+                if (
+                    self._norm_mean.shape != expected_shape
+                    or self._norm_std.shape != expected_shape
+                ):
+                    LOGGER.warning(
+                        "Ignoring norm_stats.npz with incompatible shape: "
+                        "mean=%s std=%s expected=%s",
+                        self._norm_mean.shape,
+                        self._norm_std.shape,
+                        expected_shape,
+                    )
+                    self._norm_mean = None
+                    self._norm_std = None
+                else:
+                    LOGGER.info("Loaded normalisation stats from %s", norm_path)
             except Exception as error:
                 LOGGER.warning("Failed to load norm_stats.npz: %s", error)
 
@@ -90,7 +190,13 @@ class GestureClassifier:
                 raise RuntimeError("TensorFlow loader unavailable")
             if not self.model_path.exists():
                 raise FileNotFoundError(f"Model file not found: {self.model_path}")
+            demo_marker_path = self.model_path.with_suffix(".demo")
+            if demo_marker_path.exists():
+                raise RuntimeError(
+                    f"Placeholder demo model marker found: {demo_marker_path}"
+                )
             self.model = load_model(str(self.model_path))
+            self._validate_model_contract()
             self._available = True
             self._demo_mode = False
             LOGGER.info("Gesture classifier initialized successfully")
@@ -158,7 +264,7 @@ class GestureClassifier:
         Accepts either 63-dim (one hand) or 126-dim (two hands) input.
         Always outputs a (1, INPUT_DIM) tensor matching the loaded model.
         """
-        expected_dim = 126
+        expected_dim = self.model_input_dim
         flat = landmarks_array.astype(np.float32).reshape(-1)
 
         if flat.size < expected_dim:
@@ -176,6 +282,28 @@ class GestureClassifier:
             flat = (flat - self._norm_mean) / self._norm_std
         return flat.reshape(1, expected_dim)
 
+    def _prepare_temporal_features(self, landmarks_array: np.ndarray) -> np.ndarray:
+        """Append the latest frame and return a padded temporal input tensor."""
+        frame = self._prepare_features(landmarks_array).reshape(self.model_input_dim)
+        self._sequence_buffer.append(frame)
+
+        if len(self._sequence_buffer) < self.sequence_length:
+            pad_count = self.sequence_length - len(self._sequence_buffer)
+            zero_frame = np.zeros(self.model_input_dim, dtype=np.float32)
+            frames = [zero_frame.copy() for _ in range(pad_count)] + list(self._sequence_buffer)
+        else:
+            frames = list(self._sequence_buffer)
+
+        return np.asarray(frames, dtype=np.float32).reshape(
+            1,
+            self.sequence_length,
+            self.model_input_dim,
+        )
+
+    def reset_sequence(self) -> None:
+        """Clear temporal inference state."""
+        self._sequence_buffer.clear()
+
     def predict_with_details(self, landmarks_array: np.ndarray) -> dict[str, object]:
         """Return thresholded prediction plus raw top-3 candidates.
 
@@ -190,37 +318,42 @@ class GestureClassifier:
         if not self._available or self.model is None:
             return self._predict_demo_with_details()
 
-        try:
-            features = self._prepare_features(landmarks_array)
-            output = self.model(features, training=False)
-            probabilities = output[0].numpy().astype(np.float32)
-            if probabilities.size == 0:
-                return {"label_index": -1, "confidence": 0.0, "top_candidates": []}
+        with self._predict_lock:
+            try:
+                if self.model_type == TEMPORAL_MODEL_TYPE:
+                    features = self._prepare_temporal_features(landmarks_array)
+                else:
+                    features = self._prepare_features(landmarks_array)
+                output = self.model(features, training=False)
+                probabilities = output[0].numpy().astype(np.float32)
+                if probabilities.size == 0:
+                    return {"label_index": -1, "confidence": 0.0, "top_candidates": []}
 
-            sorted_indices = np.argsort(probabilities)[::-1]
-            top_indices = sorted_indices[:3]
-            top_candidates = [
-                {
-                    "index": int(index),
-                    "confidence": float(probabilities[index]),
+                sorted_indices = np.argsort(probabilities)[::-1]
+                top_indices = sorted_indices[:3]
+                top_candidates = [
+                    {
+                        "index": int(index),
+                        "confidence": float(probabilities[index]),
+                    }
+                    for index in top_indices
+                ]
+
+                best_index = int(top_indices[0])
+                best_confidence = float(probabilities[best_index])
+                label_index = best_index if best_confidence >= self.confidence_threshold else -1
+                return {
+                    "label_index": int(label_index),
+                    "confidence": float(best_confidence),
+                    "top_candidates": top_candidates,
                 }
-                for index in top_indices
-            ]
-
-            best_index = int(top_indices[0])
-            best_confidence = float(probabilities[best_index])
-            label_index = best_index if best_confidence >= self.confidence_threshold else -1
-            return {
-                "label_index": int(label_index),
-                "confidence": float(best_confidence),
-                "top_candidates": top_candidates,
-            }
-        except Exception as error:
-            LOGGER.warning("Prediction failed; falling back to demo mode: %s", error)
-            self._available = False
-            self._demo_mode = True
-            self.model = None
-            return self._predict_demo_with_details()
+            except Exception as error:
+                LOGGER.warning("Prediction failed; falling back to demo mode: %s", error)
+                self._available = False
+                self._demo_mode = True
+                self.model = None
+                self.reset_sequence()
+                return self._predict_demo_with_details()
 
     def predict(self, landmarks_array: np.ndarray) -> tuple[int, float]:
         """Return `(label_index, confidence)` and reject low-confidence predictions."""

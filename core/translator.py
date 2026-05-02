@@ -30,6 +30,10 @@ class Translator:
             LOGGER.exception("Invalid label map JSON")
             self.label_map = {}
 
+    def reload(self) -> None:
+        """Reload label mappings from disk."""
+        self._load_label_map()
+
     def get_label(self, index: int) -> str:
         """Return label text for a prediction index."""
         return self.label_map.get(str(index), "Unknown")

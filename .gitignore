@@ -4,3 +4,17 @@ __pycache__/
 *.zip
 .vscode/
 data/
+# Security
+.env
+
+# Visual Studio files
+.vs/
+*.sqlite
+*.db
+
+# AI Models and heavy files
+models/*.h5
+models/*.npz
+
+# Logs
+logs/

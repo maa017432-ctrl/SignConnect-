@@ -13,9 +13,9 @@ from core.translator import Translator
 
 @pytest.fixture(autouse=True)
 def reset_classifier_singleton():
-    GestureClassifier._instance = None
+    GestureClassifier.reset_instance()
     yield
-    GestureClassifier._instance = None
+    GestureClassifier.reset_instance()
 
 
 class TestFullPipeline:

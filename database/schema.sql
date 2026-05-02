@@ -1,3 +1,11 @@
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    password_hash TEXT NOT NULL,
+    full_name TEXT NOT NULL DEFAULT '',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -12,3 +20,6 @@ CREATE TABLE IF NOT EXISTS translations (
     audio_file TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX IF NOT EXISTS idx_translations_created ON translations(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);

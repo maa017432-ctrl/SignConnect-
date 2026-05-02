@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 
 np = pytest.importorskip("numpy")
@@ -11,9 +13,15 @@ from core.ai_model import GestureClassifier
 @pytest.fixture(autouse=True)
 def reset_gesture_classifier_singleton() -> None:
     """Each test gets a fresh ``GestureClassifier`` (singleton reset)."""
-    GestureClassifier._instance = None
+    GestureClassifier.reset_instance()
     yield
-    GestureClassifier._instance = None
+    GestureClassifier.reset_instance()
+
+
+class _FakeModel:
+    def __init__(self, input_shape=(None, 126), output_shape=(None, 31)) -> None:
+        self.input_shape = input_shape
+        self.output_shape = output_shape
 
 
 def test_predict_with_dummy_input() -> None:
@@ -39,3 +47,64 @@ def test_confidence_threshold_rejection() -> None:
     assert classifier.is_demo_mode
     assert 0.76 <= confidence <= 0.95
     assert label >= 0
+
+
+def test_singleton_reuse_warns_on_config_mismatch(caplog) -> None:
+    first = GestureClassifier(
+        model_path="missing-model.h5",
+        confidence_threshold=0.75,
+        labels_count=31,
+    )
+    second = GestureClassifier(
+        model_path="other-model.h5",
+        confidence_threshold=0.5,
+        labels_count=12,
+    )
+
+    assert first is second
+    assert "singleton already initialized" in caplog.text
+
+
+def test_loaded_model_contract_match_is_available(tmp_path) -> None:
+    model_path = tmp_path / "model.h5"
+    model_path.write_text("placeholder", encoding="utf-8")
+
+    with patch("core.ai_model.load_model", return_value=_FakeModel()):
+        classifier = GestureClassifier(
+            model_path=str(model_path),
+            confidence_threshold=0.75,
+            labels_count=31,
+        )
+
+    assert classifier.is_available
+    assert not classifier.is_demo_mode
+
+
+def test_loaded_model_output_mismatch_falls_back_to_demo(tmp_path) -> None:
+    model_path = tmp_path / "model.h5"
+    model_path.write_text("placeholder", encoding="utf-8")
+
+    with patch("core.ai_model.load_model", return_value=_FakeModel(output_shape=(None, 30))):
+        classifier = GestureClassifier(
+            model_path=str(model_path),
+            confidence_threshold=0.75,
+            labels_count=31,
+        )
+
+    assert not classifier.is_available
+    assert classifier.is_demo_mode
+
+
+def test_loaded_model_input_mismatch_falls_back_to_demo(tmp_path) -> None:
+    model_path = tmp_path / "model.h5"
+    model_path.write_text("placeholder", encoding="utf-8")
+
+    with patch("core.ai_model.load_model", return_value=_FakeModel(input_shape=(None, 64))):
+        classifier = GestureClassifier(
+            model_path=str(model_path),
+            confidence_threshold=0.75,
+            labels_count=31,
+        )
+
+    assert not classifier.is_available
+    assert classifier.is_demo_mode

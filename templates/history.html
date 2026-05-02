@@ -3,48 +3,184 @@
 {% block meta_description %}Browse the full translation history with audio playback.{% endblock %}
 
 {% block content %}
-<div class="panel" style="margin-top:1rem;">
-  <div class="history-header">
-    <h2 data-i18n="history.title">Translation History</h2>
-    <div style="display:flex;gap:.5rem;">
-      <button id="refresh-history-btn" type="button" class="btn btn-secondary" data-i18n="history.refresh">↻
-        Refresh</button>
-      <button id="clear-history-btn" type="button" class="btn btn-danger" data-i18n="history.clear">🗑 Clear
-        All</button>
+<div class="sc-page">
+  <div class="sc-page-container">
+
+    <!-- Page Header -->
+    <div class="sc-page-header sc-reveal">
+      <div>
+        <h1 class="sc-page-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="sc-page-title-icon"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          Translation History
+        </h1>
+        <p class="sc-page-subtitle">Review past translations and replay audio</p>
+      </div>
+      <div class="sc-page-actions">
+        <button id="refresh-history-page-btn" type="button" class="sc-btn sc-btn--sm" onclick="location.reload()">↻ Refresh</button>
+        <button id="clear-history-page-btn" type="button" class="sc-btn sc-btn--sm sc-btn--danger">🗑 Clear All</button>
+      </div>
+    </div>
+
+    <div class="sc-history-layout">
+
+      <!-- Main: History Table -->
+      <div class="sc-history-main">
+        <div class="sc-widget sc-reveal" data-delay="0">
+          <div class="sc-widget-header">
+            <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="sc-widget-icon"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg> Recent Translations</h3>
+            <span class="sc-badge">{{ rows|length }} entries</span>
+          </div>
+          <div class="sc-widget-body sc-widget-body--table">
+            <table class="sc-table">
+              <thead>
+                <tr>
+                  <th>Label</th>
+                  <th>Confidence</th>
+                  <th>Audio</th>
+                  <th>Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in rows %}
+                <tr>
+                  <td><span class="sc-gesture-tag">{{ row['gesture_label'] }}</span></td>
+                  <td>
+                    {% if row['confidence'] is not none %}
+                    <div class="sc-conf-cell">
+                      <div class="sc-conf-bar-mini"><div class="sc-conf-fill-mini" style="width:{{ (row['confidence']*100)|round|int }}%"></div></div>
+                      <span>{{ "%.1f"|format(row['confidence'] * 100) }}%</span>
+                    </div>
+                    {% else %}—{% endif %}
+                  </td>
+                  <td>
+                    {% if row['audio_file'] %}
+                    <audio src="{{ url_for('static', filename='audio/' ~ row['audio_file']) }}" controls preload="none" class="sc-audio"></audio>
+                    {% else %}<span class="sc-muted">—</span>{% endif %}
+                  </td>
+                  <td><span class="sc-muted sc-timestamp" data-ts="{{ row['created_at'] }}">{{ row['created_at'] }}</span></td>
+                </tr>
+                {% else %}
+                <tr>
+                  <td colspan="4" class="sc-empty-state">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="sc-empty-icon"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    <p>No translation history yet.</p>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sidebar Widgets -->
+      <div class="sc-history-sidebar">
+
+        <!-- Summary Widget -->
+        <div class="sc-widget sc-reveal" data-delay="100">
+          <div class="sc-widget-header">
+            <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="sc-widget-icon"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg> Summary</h3>
+          </div>
+          <div class="sc-widget-body">
+            <div class="sc-stats-mini-grid">
+              <div class="sc-stat-mini"><span class="sc-stat-mini-val">{{ rows|length }}</span><span class="sc-stat-mini-lbl">Total</span></div>
+              <div class="sc-stat-mini">
+                <span class="sc-stat-mini-val">
+                  {% if rows|length > 0 %}
+                    {{ "%.0f"|format((rows|map(attribute='confidence')|select('ne', none)|list|sum / rows|selectattr('confidence', 'ne', none)|list|length * 100) if rows|selectattr('confidence', 'ne', none)|list|length > 0 else 0) }}%
+                  {% else %}0%{% endif %}
+                </span>
+                <span class="sc-stat-mini-lbl">Avg Conf.</span>
+              </div>
+              <div class="sc-stat-mini">
+                <span class="sc-stat-mini-val">{{ rows|selectattr('audio_file')|list|length }}</span>
+                <span class="sc-stat-mini-lbl">With Audio</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Export Widget -->
+        <div class="sc-widget sc-widget--dark sc-reveal" data-delay="200">
+          <div class="sc-widget-header">
+            <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="sc-widget-icon"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export</h3>
+          </div>
+          <div class="sc-widget-body">
+            <p class="sc-widget-desc">Download your translation history for records or accessibility logs.</p>
+            <button id="export-csv-btn" class="sc-btn sc-btn--sm" style="width:100%;margin-top:12px">⬇ Download CSV</button>
+          </div>
+        </div>
+
+
+      </div>
     </div>
   </div>
-
-  <table class="history-table">
-    <thead>
-      <tr>
-        <th data-i18n="history.gesture">Label</th>
-        <th data-i18n="history.confidence">Confidence</th>
-        <th>Audio</th>
-        <th data-i18n="history.timestamp">Time</th>
-      </tr>
-    </thead>
-    <tbody id="history-tbody">
-      {% for row in rows %}
-      <tr>
-        <td>{{ row['gesture_label'] }}</td>
-        <td>
-          {% if row['confidence'] is not none %}
-          {{ "%.1f"|format(row['confidence'] * 100) }}%
-          {% else %}—{% endif %}
-        </td>
-        <td>
-          {% if row['audio_file'] %}
-          <audio src="{{ url_for('static', filename='audio/' ~ row['audio_file']) }}" controls preload="none"></audio>
-          {% else %}—{% endif %}
-        </td>
-        <td>{{ row['created_at'] }}</td>
-      </tr>
-      {% else %}
-      <tr>
-        <td colspan="4" class="history-empty">No history yet.</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
 </div>
 {% endblock %}
+
+<script>
+(function () {
+  // ── Timestamp formatting ──────────────────────────────────────
+  document.querySelectorAll('.sc-timestamp').forEach(function (el) {
+    var raw = el.dataset.ts;
+    if (!raw) return;
+    try {
+      var date = new Date(raw.replace(' ', 'T') + 'Z');
+      var now = Date.now();
+      var diff = Math.floor((now - date.getTime()) / 1000);
+      var text;
+      if (diff < 60) text = 'Just now';
+      else if (diff < 3600) text = Math.floor(diff / 60) + 'm ago';
+      else if (diff < 86400) text = Math.floor(diff / 3600) + 'h ago';
+      else text = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+      el.textContent = text;
+      el.title = date.toLocaleString();
+    } catch (e) { /* leave raw string */ }
+  });
+
+  // ── CSV Export ──────────────────────────────────────────────
+  var exportBtn = document.getElementById('export-csv-btn');
+  var clearBtn = document.getElementById('clear-history-page-btn');
+
+  if (exportBtn) {
+    exportBtn.addEventListener('click', function () {
+      fetch('/api/history', { cache: 'no-store' })
+        .then(function (r) { return r.json(); })
+        .then(function (rows) {
+          if (!rows.length) {
+            alert('No history to export.');
+            return;
+          }
+          var header = ['Label', 'Confidence (%)', 'Audio File', 'Timestamp'];
+          var lines = [header.join(',')];
+          rows.forEach(function (row) {
+            lines.push([
+              '"' + (row.gesture_label || '').replace(/"/g, '""') + '"',
+              row.confidence != null ? (row.confidence * 100).toFixed(1) : '',
+              '"' + (row.audio_file || '') + '"',
+              '"' + (row.created_at || '') + '"'
+            ].join(','));
+          });
+          var blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = url;
+          a.download = 'signconnect_history_' + new Date().toISOString().slice(0, 10) + '.csv';
+          a.click();
+          URL.revokeObjectURL(url);
+        })
+        .catch(function () { alert('Failed to fetch history.'); });
+    });
+  }
+
+  // ── Clear history confirmation ────────────────────────────────
+  if (clearBtn) {
+    clearBtn.addEventListener('click', function () {
+      if (!confirm('Clear all translation history? This cannot be undone.')) return;
+      fetch('/api/history', { method: 'DELETE' })
+        .then(function () { location.reload(); })
+        .catch(function () { alert('Failed to clear history.'); });
+    });
+  }
+})();
+</script>

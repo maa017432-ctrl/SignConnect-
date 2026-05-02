@@ -1,4 +1,4 @@
-# SignConnect — Production HTTP server (Waitress)
+# SignConnect - Production HTTP server (Waitress)
 #
 # Usage: .\run_production.ps1
 #
@@ -11,8 +11,8 @@
 
 $ErrorActionPreference = "Stop"
 $ProjectRoot = $PSScriptRoot
-$PythonExe   = Join-Path $ProjectRoot ".venv311\Scripts\python.exe"
-$Waitress    = Join-Path $ProjectRoot ".venv311\Scripts\waitress-serve.exe"
+$PythonExe = Join-Path $ProjectRoot ".venv311\Scripts\python.exe"
+$Waitress = Join-Path $ProjectRoot ".venv311\Scripts\waitress-serve.exe"
 
 if (-not (Test-Path $PythonExe)) {
     Write-Error "venv311 not found. Run: .\run.ps1 first (it will guide you)."
@@ -36,7 +36,7 @@ if (Test-Path $EnvFile) {
 }
 
 Write-Host ""
-Write-Host "  SignConnect — Production Mode (Waitress)" -ForegroundColor Cyan
+Write-Host "  SignConnect - Production Mode (Waitress)" -ForegroundColor Cyan
 Write-Host "  Server : http://${Host}:${Port}" -ForegroundColor Cyan
 Write-Host "  Threads: 8 workers" -ForegroundColor Cyan
 Write-Host "  Note   : WebSocket falls back to long-polling in this mode." -ForegroundColor DarkYellow

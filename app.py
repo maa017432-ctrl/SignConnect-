@@ -21,6 +21,7 @@ from core.translator import Translator
 from core.tts_engine import TTSEngine
 from database.db import init_db
 from routes.api import api_bp
+from routes.auth import auth_bp
 from routes.main import main_bp
 from routes.stream import camera_frame_response, stream_bp
 
@@ -44,12 +45,13 @@ def create_app() -> Flask:
         format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
     )
 
-    CORS(app)
+    # ── CORS: restrict to configured origins only (no wildcard) ──
+    CORS(app, origins=app.config["ALLOWED_ORIGINS"], supports_credentials=True)
 
     # Threading async_mode + simple-websocket: real WebSockets without eventlet/gevent
     socketio.init_app(
         app,
-        cors_allowed_origins="*",
+        cors_allowed_origins=app.config["ALLOWED_ORIGINS"],
         async_mode="threading",
         logger=False,
         engineio_logger=False,
@@ -80,6 +82,9 @@ def create_app() -> Flask:
         model_path=app.config["MODEL_PATH"],
         confidence_threshold=app.config["PREDICTION_CONFIDENCE_THRESHOLD"],
         labels_count=labels_count,
+        model_input_dim=app.config["MODEL_INPUT_DIM"],
+        model_type=app.config["MODEL_TYPE"],
+        sequence_length=app.config["SEQUENCE_LENGTH"],
     )
     tts_engine = TTSEngine(
         audio_dir=app.config["AUDIO_CACHE_DIR"],
@@ -110,6 +115,7 @@ def create_app() -> Flask:
     }
 
     app.register_blueprint(main_bp)
+    app.register_blueprint(auth_bp)
     app.register_blueprint(stream_bp)
     app.register_blueprint(api_bp)
 
@@ -143,12 +149,27 @@ def create_app() -> Flask:
 
 if __name__ == "__main__":
     flask_app = create_app()
-    # socketio.run() supports real WebSockets (via simple-websocket) in threading mode.
-    # Use run_production.ps1 / run_production.bat for a multi-threaded HTTP server.
-    socketio.run(
-        flask_app,
-        host=flask_app.config["HOST"],
-        port=flask_app.config["PORT"],
-        debug=flask_app.config["DEBUG"],
-        allow_unsafe_werkzeug=True,
-    )
+    # Development only — use run_production.ps1 / waitress for production.
+    if flask_app.config["DEBUG"]:
+        socketio.run(
+            flask_app,
+            host=flask_app.config["HOST"],
+            port=flask_app.config["PORT"],
+            debug=True,
+            allow_unsafe_werkzeug=True,
+            use_reloader=False,
+        )
+    else:
+        # Production: use waitress (already in requirements.txt)
+        from waitress import serve
+        LOGGER.info(
+            "Starting production server on %s:%s",
+            flask_app.config["HOST"],
+            flask_app.config["PORT"],
+        )
+        serve(
+            flask_app,
+            host=flask_app.config["HOST"],
+            port=flask_app.config["PORT"],
+            threads=4,
+        )

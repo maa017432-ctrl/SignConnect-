@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -95,6 +96,15 @@ class TestApiTranslate:
 # ── /api/config ───────────────────────────────────────────────────────────────
 
 class TestApiConfig:
+    def test_session_cookie_defaults_are_hardened(self, app) -> None:
+        assert app.config["SESSION_COOKIE_HTTPONLY"] is True
+        assert app.config["SESSION_COOKIE_SAMESITE"] == "Lax"
+        assert app.config["SESSION_COOKIE_SECURE"] is (not app.config["DEBUG"])
+
+    def test_model_contract_config_matches_live_pipeline(self, app) -> None:
+        assert app.config["MODEL_INPUT_DIM"] == 126
+        assert app.config["MODEL_TYPE"] == "mlp"
+
     def test_get_config_returns_threshold(self, client) -> None:
         res = client.get("/api/config")
         assert res.status_code == 200
@@ -153,3 +163,111 @@ class TestApiConfig:
         assert res.status_code == 200
         body = res.get_json()
         assert abs(body["confidence_threshold"] - original) < 0.001
+
+    def test_admin_write_requires_key_when_not_debug(self, client, app) -> None:
+        original_debug = app.config["DEBUG"]
+        original_key = app.config["API_KEY"]
+        try:
+            app.config["DEBUG"] = False
+            app.config["API_KEY"] = "secret-test-key"
+
+            no_key = client.post("/api/config", json={"confidence_threshold": 0.6})
+            bad_key = client.delete("/api/history", headers={"X-API-Key": "wrong"})
+            good_key = client.post(
+                "/api/config",
+                json={"confidence_threshold": 0.6},
+                headers={"X-API-Key": "secret-test-key"},
+            )
+
+            assert no_key.status_code == 401
+            assert bad_key.status_code == 401
+            assert good_key.status_code == 200
+        finally:
+            app.config["DEBUG"] = original_debug
+            app.config["API_KEY"] = original_key
+
+
+class TestModelReload:
+    def test_model_reload_uses_public_translator_reload(self, client, app) -> None:
+        translator = app.extensions["translator"]
+        classifier = app.extensions["classifier"]
+        with (
+            patch.object(translator, "reload") as translator_reload,
+            patch.object(classifier, "reload", return_value=True) as classifier_reload,
+        ):
+            res = client.post("/api/model/reload")
+
+        assert res.status_code == 200
+        translator_reload.assert_called_once_with()
+        classifier_reload.assert_called_once_with()
+
+    def test_model_reload_requires_key_when_not_debug(self, client, app) -> None:
+        original_debug = app.config["DEBUG"]
+        original_key = app.config["API_KEY"]
+        try:
+            app.config["DEBUG"] = False
+            app.config["API_KEY"] = "secret-test-key"
+
+            no_key = client.post("/api/model/reload")
+            good_key = client.post(
+                "/api/model/reload",
+                headers={"X-API-Key": "secret-test-key"},
+            )
+
+            assert no_key.status_code == 401
+            assert good_key.status_code in (200, 503)
+        finally:
+            app.config["DEBUG"] = original_debug
+            app.config["API_KEY"] = original_key
+
+
+class TestTranslationsApi:
+    def test_get_translations_returns_requested_language(self, client) -> None:
+        res = client.get("/api/translations/en")
+
+        assert res.status_code == 200
+        body = res.get_json()
+        assert body is not None
+        assert body["lang"] == "en"
+        assert isinstance(body["translations"], dict)
+
+    def test_get_translations_falls_back_to_english(self, client) -> None:
+        res = client.get("/api/translations/unknown")
+
+        assert res.status_code == 200
+        body = res.get_json()
+        assert body is not None
+        assert body["lang"] == "en"
+
+    def test_get_translations_missing_file_returns_404(
+        self, client, app, tmp_path: Path
+    ) -> None:
+        original_static_folder = app.static_folder
+        app.static_folder = str(tmp_path)
+        try:
+            res = client.get("/api/translations/en")
+        finally:
+            app.static_folder = original_static_folder
+
+        assert res.status_code == 404
+        body = res.get_json()
+        assert body is not None
+        assert body["code"] == 404
+
+    def test_get_translations_invalid_json_returns_500(
+        self, client, app, tmp_path: Path
+    ) -> None:
+        original_static_folder = app.static_folder
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+        (data_dir / "translations.json").write_text("{ invalid", encoding="utf-8")
+        app.static_folder = str(tmp_path)
+        try:
+            res = client.get("/api/translations/en")
+        finally:
+            app.static_folder = original_static_folder
+
+        assert res.status_code == 500
+        body = res.get_json()
+        assert body is not None
+        assert body["code"] == 500

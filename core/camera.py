@@ -52,13 +52,27 @@ class CameraManager:
         with several discarded reads.  Returns ``(None, None)`` if no camera
         index produces a valid frame.
         """
+        import sys
         if cv2 is None:
             return None, None
         for index in self._INDICES:
-            cap = cv2.VideoCapture(index)
+            # On Windows, DirectShow is often more reliable than the default MSMF backend
+            if sys.platform == "win32":
+                cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
+            else:
+                cap = cv2.VideoCapture(index)
+
             if not cap.isOpened():
                 cap.release()
-                continue
+                # If DSHOW fails on Windows, try default backend as fallback
+                if sys.platform == "win32":
+                    cap = cv2.VideoCapture(index)
+                    if not cap.isOpened():
+                        cap.release()
+                        continue
+                else:
+                    continue
+
             try:
                 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
                 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
@@ -96,13 +110,20 @@ class CameraManager:
         with self._lock:
             if self._running:
                 return
-        if not self._try_init():
-            raise CameraUnavailableError("Camera not found or busy")
-        with self._lock:
             self._running = True
-            self._thread = threading.Thread(target=self._capture_loop, daemon=True)
-            self._thread.start()
-            LOGGER.info("Camera capture started")
+
+        if not self._try_init():
+            with self._lock:
+                self._running = False
+            LOGGER.error("Camera not found or busy")
+            raise CameraUnavailableError("Camera not found or busy")
+
+        def init_and_loop() -> None:
+            self._capture_loop()
+
+        LOGGER.info("Camera capture started")
+        self._thread = threading.Thread(target=init_and_loop, daemon=True)
+        self._thread.start()
 
     def _capture_loop(self) -> None:
         """Continuously read frames to keep latest frame available."""

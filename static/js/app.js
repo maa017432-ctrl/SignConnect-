@@ -15,10 +15,11 @@
   const cameraDot = document.getElementById("camera-dot");
   const modelStatus = document.getElementById("model-status");
   const modelDot = document.getElementById("model-dot");
-  const fpsStatus = document.getElementById("fps-status");
+  const fpsStatus = document.getElementById("fps-status") || document.getElementById("fps-display");
   const startBtn = document.getElementById("start-btn");
   const pauseBtn = document.getElementById("pause-btn");
   const clearBtn = document.getElementById("clear-btn");
+  const copyBtn = document.getElementById("copy-btn");
   const deleteWordBtn = document.getElementById("delete-word-btn");
   const speakBtn = document.getElementById("speak-btn");
   const refreshHistBtn = document.getElementById("refresh-history-btn");
@@ -29,6 +30,7 @@
   const trainingModeToggle = document.getElementById("training-mode-toggle");
   const topkPanel = document.getElementById("topk-panel");
   const topkList = document.getElementById("topk-list");
+  const confidenceFill = document.getElementById("confidence-bar-fill");
 
   /* ── Coaching System Elements ──────────────────────────────── */
   const coachingContainer = document.getElementById("coaching-container");
@@ -825,9 +827,7 @@
 
     socket.on("connect", () => {
       socketConnected = true;
-      // Stop HTTP polling if it was running as a fallback
-      if (predictionTimer) { clearInterval(predictionTimer); predictionTimer = null; }
-      LOGGER("WebSocket connected — switching from HTTP poll to push");
+      LOGGER("WebSocket connected");
     });
 
     socket.on("disconnect", () => {
@@ -843,6 +843,10 @@
     socket.on("prediction", (data) => {
       updatePredictionUI(data);
     });
+
+    // Keep polling as a reliable fallback. Waitress can serve the app, but
+    // SocketIO push may be unavailable depending on the local server path.
+    startPredictionPoll();
   }
 
   function startPredictionPoll() {
@@ -918,11 +922,42 @@
         const ok = data.camera && data.camera_frame_route !== false;
         cameraStatus.textContent = ok ? "Camera: OK" : "Camera: DOWN";
         setDot(cameraDot, ok ? "ok" : "err");
+
+        // If camera is definitively down, show a clear message in the overlay
+        if (!ok && videoOverlay && !videoOverlay.classList.contains("hidden")) {
+          const msg = videoOverlay.querySelector(".overlay-msg");
+          if (msg && msg.textContent.includes("Connecting")) {
+            msg.textContent = "Camera unavailable. It may be in use by another app or permissions are denied.";
+            const spinner = videoOverlay.querySelector(".spinner");
+            if (spinner) spinner.style.display = "none";
+            
+            // Add retry button if it doesn't exist
+            const existing = videoOverlay.querySelector(".overlay-retry");
+            if (!existing) {
+              const btn = document.createElement("button");
+              btn.className = "sc-btn sc-btn--sm overlay-retry";
+              btn.style.marginTop = "12px";
+              btn.textContent = "Retry Connection";
+              btn.addEventListener("click", () => {
+                showOverlay("Connecting to camera…");
+                if (spinner) spinner.style.display = "block";
+                btn.remove();
+                if (video) video.src = mjpegUrl() + "?_=" + Date.now();
+              });
+              videoOverlay.appendChild(btn);
+            }
+          }
+        }
       }
       if (modelStatus) {
-        const label = !data.model ? "DOWN" : data.model_demo_mode ? "DEMO" : "OK";
-        modelStatus.textContent = `Model: ${label}`;
-        setDot(modelDot, data.model ? (data.model_demo_mode ? "warn" : "ok") : "err");
+        const label = data.model_demo_mode ? "DEMO" : data.model ? "OK" : "DOWN";
+        const type = data.model_type ? String(data.model_type) : "unknown";
+        const classes = data.label_count ? `${data.label_count} classes` : "unknown classes";
+        const sequence = type === "temporal_landmark" && data.sequence_length
+          ? `, ${data.sequence_length} frames`
+          : "";
+        modelStatus.textContent = `Model: ${label} (${type}, ${classes}${sequence})`;
+        setDot(modelDot, data.model_demo_mode ? "warn" : data.model ? "ok" : "err");
       }
       updateFpsDisplay();
     } catch {
@@ -976,7 +1011,6 @@
 
   /* ── HTTP fallback poll for /api/prediction ───────────────── */
   async function pollPrediction() {
-    if (socketConnected) return; // socket push takes over — skip
     try {
       const res = await fetch("/api/prediction", { cache: "no-store" });
       const data = await res.json();
@@ -1028,11 +1062,23 @@
 
   /* ── Confidence badge ─────────────────────────────────────── */
   function updateConfidence(raw) {
-    if (!confidenceBadge) return;
     const pct = Math.round((raw || 0) * 100);
-    confidenceBadge.textContent = `${pct}%`;
-    confidenceBadge.className =
-      "badge " + (pct > 85 ? "high" : pct > 70 ? "mid" : "low");
+
+    // Update old badge if it exists (for backward compatibility)
+    if (confidenceBadge) {
+      confidenceBadge.textContent = `${pct}%`;
+      confidenceBadge.className =
+        "badge " + (pct > 85 ? "high" : pct > 70 ? "mid" : "low");
+    }
+
+    // Update new confidence circle value if it exists
+    const confidenceValue = document.getElementById("confidence-value");
+    if (confidenceValue) {
+      confidenceValue.textContent = `${pct}%`;
+    }
+    if (confidenceFill) {
+      confidenceFill.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+    }
   }
 
   /* ── Language selector ────────────────────────────────────── */
@@ -1133,8 +1179,11 @@
 
   function initTrainingMode() {
     if (!trainingModeToggle && !topkPanel) return;
-    const saved = settingsState.training || localStorage.getItem("sc_training_mode");
-    const enabled = saved === null ? true : saved === "1";
+    const saved = settingsState.training !== undefined
+      ? settingsState.training
+      : localStorage.getItem("sc_training_mode");
+    // Default to OFF for new users (was incorrectly defaulting to true)
+    const enabled = saved === null || saved === undefined ? false : (saved === "1" || saved === true);
     setTrainingMode(enabled);
     if (trainingModeToggle) {
       trainingModeToggle.addEventListener("change", () => {
@@ -1185,6 +1234,27 @@
     updateSentenceDisplay("");
     updateProgressBar(0, 15, false);
     resetSessionStats();
+  }
+
+  /* ── Copy sentence ────────────────────────────────────────── */
+  async function copySentence() {
+    const text = sentenceDisplay?.textContent || "";
+    if (!text || text === "…") {
+      return; // Nothing to copy
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      // Optional: Show a brief feedback
+      if (copyBtn) {
+        const originalText = copyBtn.textContent;
+        copyBtn.textContent = "✓ Copied!";
+        setTimeout(() => {
+          copyBtn.textContent = originalText;
+        }, 2000);
+      }
+    } catch (err) {
+      console.error("Failed to copy:", err);
+    }
   }
 
   /* ── Clear history (history page) ────────────────────────── */
@@ -1301,12 +1371,26 @@
     streamTimer = null;
 
     if (video) {
-      video.src = mjpegUrl();
-      video.onload = () => hideOverlay();
+      video.src = mjpegUrl() + "?_=" + Date.now();
+      video.onload = () => {
+        if (video.naturalWidth > 1) hideOverlay();
+      };
       video.onerror = () => {
         showOverlay("Camera error — retrying…");
-        setTimeout(() => { if (!paused && video) video.src = mjpegUrl(); }, 3000);
+        setTimeout(() => { if (!paused && video) video.src = mjpegUrl() + "?_=" + Date.now(); }, 3000);
       };
+
+      // Fallback: Some browsers (Chrome) don't fire onload for MJPEG streams
+      const checkVideo = setInterval(() => {
+        if (paused || !video) {
+          clearInterval(checkVideo);
+          return;
+        }
+        if (video.naturalWidth > 1) { // >1 ensures it's not a 1x1 placeholder frame
+          hideOverlay();
+          clearInterval(checkVideo);
+        }
+      }, 500);
     }
 
     showOverlay("Connecting to camera…");
@@ -1314,6 +1398,29 @@
     if (pauseBtn) pauseBtn.disabled = false;
     setDot(cameraDot, "pulsing");
     startSessionTimer();
+
+    // ── Camera connection timeout (30 s) ──
+    setTimeout(() => {
+      if (!paused && videoOverlay && !videoOverlay.classList.contains("hidden")) {
+        const msg = videoOverlay.querySelector(".overlay-msg");
+        if (msg && msg.textContent.includes("Connecting")) {
+          msg.textContent = "Camera failed to connect — check permissions.";
+          // Add retry button dynamically
+          const existing = videoOverlay.querySelector(".overlay-retry");
+          if (!existing) {
+            const btn = document.createElement("button");
+            btn.className = "sc-btn sc-btn--sm overlay-retry";
+            btn.style.marginTop = "12px";
+            btn.textContent = "Retry";
+            btn.addEventListener("click", () => {
+              showOverlay("Connecting to camera…");
+              if (video) video.src = mjpegUrl() + "?_=" + Date.now();
+            });
+            videoOverlay.appendChild(btn);
+          }
+        }
+      }
+    }, 30000);
   }
 
   function pauseStream() {
@@ -1339,6 +1446,7 @@
       pauseBtn.disabled = true;
     }
     if (speakBtn) speakBtn.addEventListener("click", speakText);
+    if (copyBtn) copyBtn.addEventListener("click", copySentence);
     if (deleteWordBtn) deleteWordBtn.addEventListener("click", deleteLastWord);
     if (clearBtn) clearBtn.addEventListener("click", clearSentence);
     if (refreshHistBtn) refreshHistBtn.addEventListener("click", refreshHistoryPage);
@@ -1420,8 +1528,10 @@
     refreshHistoryPage().catch(() => { });
   }
 
-  /* All pages */
-  setInterval(pollStatus, STATUS_MS);
-  pollStatus();
+  /* All pages — status poll only on translator where it's useful */
+  if (video) {
+    setInterval(pollStatus, STATUS_MS);
+    pollStatus();
+  }
   setInterval(updateFpsDisplay, 1000);
 })();

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import logging
+from pathlib import Path
 
 from flask import Blueprint, current_app, jsonify, request
 from flask.wrappers import Response
@@ -14,9 +16,21 @@ from routes.stream import _prediction_lock, camera_frame_response
 LOGGER = logging.getLogger(__name__)
 api_bp = Blueprint("api", __name__)
 
+_MAX_TEXT_LEN = 500
+
+
+def _api_key_ok() -> bool:
+    """Return True if the request carries a valid API key, or if no key is configured."""
+    if current_app.config.get("DEBUG", False):
+        return True
+    required = current_app.config.get("API_KEY", "")
+    if not required:
+        return False
+    return request.headers.get("X-API-Key", "") == required
+
 
 @api_bp.get("/api/status")
-def status() -> tuple[dict[str, bool], int]:
+def status() -> tuple[dict[str, object], int]:
     """Return runtime health status for core services."""
     camera_manager = current_app.extensions["camera_manager"]
     classifier = current_app.extensions["classifier"]
@@ -32,6 +46,11 @@ def status() -> tuple[dict[str, bool], int]:
                 "camera": camera_manager.is_available(),
                 "model": classifier.is_available,
                 "model_demo_mode": classifier.is_demo_mode,
+                "model_type": getattr(classifier, "model_type", "unknown"),
+                "model_input_dim": getattr(classifier, "model_input_dim", None),
+                "sequence_length": getattr(classifier, "sequence_length", None),
+                "label_count": getattr(classifier, "labels_count", None),
+                "norm_stats_loaded": getattr(classifier, "has_norm_stats", False),
                 "tts": tts_engine.is_available,
                 "mediapipe": gesture_detector.is_available,
                 "camera_frame_route": camera_frame_route,
@@ -60,6 +79,8 @@ def latest_prediction() -> tuple[dict[str, object], int]:
                 "confidence": float(payload.get("confidence") or 0.0),
                 "smoothed_label": payload.get("smoothed_label"),
                 "top_candidates": payload.get("top_candidates") or [],
+                "model_type": payload.get("model_type"),
+                "inference_ms": payload.get("inference_ms"),
                 "sentence": builder.sentence if builder else "",
                 "current_run": builder.current_run if builder else 0,
                 "stable_frames": builder.stable_frames if builder else 15,
@@ -88,6 +109,9 @@ def sentence_clear() -> tuple[dict[str, str], int]:
         builder.clear()
     if smoother:
         smoother.reset()
+    classifier = current_app.extensions.get("classifier")
+    if classifier and hasattr(classifier, "reset_sequence"):
+        classifier.reset_sequence()
     return jsonify({"sentence": ""}), 200
 
 
@@ -98,6 +122,8 @@ def translate() -> tuple[dict[str, str | int], int]:
     text = str(payload.get("text", "")).strip()
     if not text:
         return jsonify({"error": "Missing text", "code": 400}), 400
+    if len(text) > _MAX_TEXT_LEN:
+        return jsonify({"error": f"Text exceeds {_MAX_TEXT_LEN} character limit", "code": 400}), 400
 
     lang = str(payload.get("lang", "en")).strip().lower() or "en"
 
@@ -175,6 +201,8 @@ def get_config() -> tuple[dict[str, float], int]:
 @api_bp.post("/api/config")
 def update_config() -> tuple[dict[str, float | str], int]:
     """Update runtime configuration values without restarting the server."""
+    if not _api_key_ok():
+        return jsonify({"error": "Unauthorized", "code": 401}), 401
     payload = request.get_json(silent=True) or {}
     classifier = current_app.extensions["classifier"]
 
@@ -192,6 +220,8 @@ def update_config() -> tuple[dict[str, float | str], int]:
 @api_bp.delete("/api/history")
 def clear_history() -> tuple[dict[str, str], int]:
     """Delete all translation rows from the database."""
+    if not _api_key_ok():
+        return jsonify({"error": "Unauthorized", "code": 401}), 401
     with get_connection(current_app.config["DATABASE_PATH"]) as connection:
         connection.execute("DELETE FROM translations")
     return jsonify({"status": "cleared"}), 200
@@ -200,11 +230,16 @@ def clear_history() -> tuple[dict[str, str], int]:
 @api_bp.post("/api/model/reload")
 def reload_model() -> tuple[dict[str, object], int]:
     """Hot-reload the gesture model and label map from disk."""
+    if not _api_key_ok():
+        return jsonify({"error": "Unauthorized", "code": 401}), 401
+
     classifier = current_app.extensions["classifier"]
     translator = current_app.extensions["translator"]
 
-    translator._load_label_map()
+    translator.reload()
     success = classifier.reload()
+    if hasattr(classifier, "reset_sequence"):
+        classifier.reset_sequence()
 
     labels = translator.get_all_labels()
     return jsonify({
@@ -226,22 +261,24 @@ def get_labels() -> tuple[dict[str, object], int]:
 @api_bp.get("/api/translations/<lang>")
 def get_translations(lang: str) -> tuple[dict[str, object], int]:
     """Return translations for the specified language."""
-    import json
-    from pathlib import Path
-    
     lang = lang.lower().strip()
     if lang not in ("en", "ar", "fr", "es", "de", "zh", "ja", "ko"):
         lang = "en"
-    
+
     translations_file = Path(current_app.static_folder) / "data" / "translations.json"
     try:
-        with open(translations_file, "r", encoding="utf-8") as f:
-            all_translations = json.load(f)
-        
+        with translations_file.open("r", encoding="utf-8") as file_obj:
+            all_translations = json.load(file_obj)
+
         if lang in all_translations:
             return jsonify({"lang": lang, "translations": all_translations[lang]}), 200
-        else:
-            return jsonify({"lang": "en", "translations": all_translations.get("en", {})}), 200
-    except Exception as e:
-        LOGGER.error("Failed to load translations: %s", e)
+        return jsonify({"lang": "en", "translations": all_translations.get("en", {})}), 200
+    except FileNotFoundError:
+        LOGGER.warning("Translations file missing: %s", translations_file)
+        return jsonify({"error": "Translations file not found", "code": 404}), 404
+    except json.JSONDecodeError:
+        LOGGER.exception("Invalid translations JSON: %s", translations_file)
+        return jsonify({"error": "Invalid translations file", "code": 500}), 500
+    except OSError as error:
+        LOGGER.error("Failed to load translations: %s", error)
         return jsonify({"error": "Failed to load translations", "code": 500}), 500

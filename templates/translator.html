@@ -1,294 +1,194 @@
 {% extends "base.html" %}
 {% block title %}Translator{% endblock %}
-{% block meta_description %}Live sign language translator — camera feed, gesture recognition, and speech synthesis.{%
-endblock %}
+{% block meta_description %}Live sign language translator — camera feed, gesture recognition, and speech synthesis.{% endblock %}
 
 {% block content %}
-<div class="translator-grid" style="margin-top:1rem;">
+<div class="sc-page sc-page--translator">
+  <div class="sc-page-container">
 
-  <!-- ── Settings Modal ── -->
-  <div id="settings-modal" class="settings-modal hidden">
-    <div class="settings-overlay"></div>
-    <div class="settings-panel">
-      <div class="settings-header">
-        <h2 class="settings-title" data-i18n="settings.title">Settings</h2>
-        <button id="settings-close-btn" class="settings-close" type="button">✕</button>
+    <!-- Page Header -->
+    <div class="sc-page-header sc-reveal">
+      <div>
+        <h1 class="sc-page-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="sc-page-title-icon"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+          Live Translator
+          <span class="sc-live-badge" id="sc-live-badge" style="display:none">
+            <span class="sc-live-dot"></span> LIVE
+          </span>
+        </h1>
+        <p class="sc-page-subtitle">Real-time ASL to English translation</p>
       </div>
+      <div class="sc-page-actions">
+        <button class="sc-icon-btn" title="Share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>
+        <button class="sc-icon-btn" title="Fullscreen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>
+      </div>
+    </div>
 
-      <div class="settings-content">
+    {% if demo_mode %}
+    <!-- Demo Mode Warning Banner -->
+    <div class="sc-demo-banner" role="alert">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <strong>Demo Mode:</strong> The gesture model failed to load — predictions are simulated. Camera and MediaPipe are still active.
+    </div>
+    {% endif %}
 
-        <!-- Camera Section -->
-        <div class="settings-section">
-          <h3 class="settings-section-title" data-i18n="settings.camera">Camera</h3>
-          <div class="settings-item">
-            <label class="settings-label" for="camera-select" data-i18n="settings.camera_device">Camera Device</label>
-            <select id="camera-select" class="settings-input settings-select">
-              <option value="default" data-i18n="settings.camera_default">Default Camera</option>
-              <option value="front" data-i18n="settings.camera_front">Front Camera</option>
-              <option value="back" data-i18n="settings.camera_back">Back Camera</option>
-            </select>
-            <p class="settings-hint" data-i18n="settings.camera_hint">Select which camera to use for gesture detection
-            </p>
+    <!-- Main Grid -->
+    <div class="sc-translator-grid">
+
+      <!-- Left: Camera + Controls -->
+      <div class="sc-translator-main">
+
+        <!-- Camera Feed -->
+        <div class="sc-camera-wrap">
+          <div class="sc-camera-overlay-bar">
+            <div class="sc-camera-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="sc-chip-icon"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/></svg> <span id="model-status">Model: loading</span></div>
+            <div class="sc-camera-chip">FPS: <span id="fps-display">--</span></div>
           </div>
-        </div>
 
-        <!-- Detection Section -->
-        <div class="settings-section">
-          <h3 class="settings-section-title" data-i18n="settings.detection">Detection</h3>
-
-          <div class="settings-item">
-            <label class="settings-label" for="settings-threshold-slider" data-i18n="settings.confidence_threshold">
-              Confidence Threshold
-            </label>
-            <div class="settings-slider-group">
-              <input id="settings-threshold-slider" type="range" min="10" max="99" value="75" step="1"
-                class="settings-slider" title="Gesture must exceed this confidence to be recognised">
-              <span class="settings-slider-value" id="settings-threshold-val">75%</span>
+          <div class="video-wrapper">
+            <img id="video-stream" src="" alt="Live sign language feed" width="640" height="480" decoding="async"
+              data-mjpeg-url="{{ url_for('stream.video_feed') }}" data-frame-url="{{ url_for('api.api_camera_frame') }}">
+            <div id="video-overlay" class="video-overlay">
+              <div class="sc-camera-off-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16.5 9.4l-2-1.74"/><path d="M2 2l20 20"/><path d="M21.43 15.97V8a2 2 0 0 0-2-2h-2.09"/><path d="M10.91 6H4a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h14"/></svg>
+              </div>
+              <span class="overlay-msg" data-i18n="translator.connecting">Connecting to camera…</span>
+              <div class="spinner"></div>
             </div>
-            <p class="settings-hint" data-i18n="settings.confidence_hint">Gesture must exceed this confidence (10% =
-              loose, 99% = strict)</p>
           </div>
 
-          <div class="settings-item">
-            <label class="settings-checkbox-label" for="settings-training-toggle">
-              <input id="settings-training-toggle" type="checkbox">
-              <span data-i18n="settings.training_mode">Training Mode</span>
-            </label>
-            <p class="settings-hint" data-i18n="settings.training_hint">Show raw prediction data and debugging
-              information</p>
-          </div>
+
         </div>
 
-        <!-- Audio Section -->
-        <div class="settings-section">
-          <h3 class="settings-section-title" data-i18n="settings.audio">Audio & Language</h3>
-
-          <div class="settings-item">
-            <label class="settings-label" for="settings-lang-select" data-i18n="settings.language">Language</label>
-            <select id="settings-lang-select" class="settings-input settings-select" data-lang-select>
-              <option value="en">🇺🇸 English</option>
-              <option value="ar">🇸🇦 العربية</option>
-              <option value="fr">🇫🇷 Français</option>
-              <option value="es">🇪🇸 Español</option>
-              <option value="de">🇩🇪 Deutsch</option>
-              <option value="zh">🇨🇳 中文</option>
-              <option value="ja">🇯🇵 日本語</option>
-              <option value="ko">🇰🇷 한국어</option>
-            </select>
-            <p class="settings-hint" data-i18n="settings.language_hint">Language for text-to-speech output</p>
+        <!-- Control Bar -->
+        <div class="sc-control-bar sc-reveal" data-delay="100">
+          <div class="sc-control-info">
+            <div class="sc-control-stat">
+              <p class="sc-control-label">DETECTED GESTURE</p>
+              <div class="sc-control-value">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="sc-ctrl-icon"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>
+                <span id="recognized-text">—</span>
+              </div>
+            </div>
+            <div class="sc-control-divider"></div>
+            <div class="sc-control-stat">
+              <p class="sc-control-label">CONFIDENCE</p>
+              <div class="sc-confidence-inline">
+                <div class="sc-conf-bar"><div class="sc-conf-fill" id="confidence-bar-fill" style="transition:width 0.3s ease"></div></div>
+                <span class="sc-conf-pct" id="confidence-value">0%</span>
+              </div>
+            </div>
           </div>
-
-          <div class="settings-item">
-            <label class="settings-checkbox-label" for="settings-audio-toggle">
-              <input id="settings-audio-toggle" type="checkbox" checked>
-              <span data-i18n="settings.speech_output">Speech Output</span>
-            </label>
-            <p class="settings-hint" data-i18n="settings.speech_hint">Enable or disable automatic speech synthesis</p>
+          <div class="sc-control-buttons">
+            <button id="pause-btn" class="sc-btn sc-btn--sm" type="button" disabled>
+              <svg viewBox="0 0 24 24" fill="currentColor" class="sc-btn-icon" style="width:14px;height:14px"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+              Pause
+            </button>
           </div>
-        </div>
-
-        <!-- Appearance Section -->
-        <div class="settings-section">
-          <h3 class="settings-section-title" data-i18n="settings.appearance">Appearance</h3>
-
-          <div class="settings-item">
-            <label class="settings-checkbox-label" for="settings-theme-toggle">
-              <input id="settings-theme-toggle" type="checkbox">
-              <span id="settings-theme-label" data-i18n="settings.light_mode">Light Mode</span>
-            </label>
-            <p class="settings-hint" data-i18n="settings.theme_hint">Switch between dark and light themes</p>
+          <!-- Hidden start-btn kept for JS compatibility -->
+          <div style="display:none">
+            <button id="start-btn" class="sc-btn sc-btn--primary sc-btn--translate" type="button">
+              <svg viewBox="0 0 24 24" fill="currentColor" class="sc-btn-icon"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <span>Start Translating</span>
+            </button>
           </div>
         </div>
-
       </div>
 
-      <div class="settings-footer">
-        <button id="settings-reset-btn" class="btn btn-secondary" type="button" data-i18n="settings.reset">Reset to
-          Defaults</button>
-        <button id="settings-save-btn" class="btn btn-primary" type="button" data-i18n="settings.save">Save
-          Settings</button>
+      <!-- Right: Sidebar Widgets -->
+      <div class="sc-translator-sidebar">
+
+        <!-- Sentence Output Widget -->
+        <div class="sc-widget sc-reveal" data-delay="100">
+          <div class="sc-widget-header">
+            <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="sc-widget-icon"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> Generated Sentence</h3>
+          </div>
+          <div class="sc-widget-body">
+            <div id="sentence-display" class="sc-sentence-display">…</div>
+            <div class="sc-sentence-actions">
+              <button id="speak-btn" type="button" class="sc-btn sc-btn--sm">🔊 Speak</button>
+              <button id="copy-btn" type="button" class="sc-btn sc-btn--sm">📋 Copy</button>
+              <button id="clear-btn" type="button" class="sc-btn sc-btn--sm sc-btn--danger">🗑 Clear</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Session Stats Widget -->
+        <div class="sc-widget sc-reveal" data-delay="200">
+          <div class="sc-widget-header">
+            <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="sc-widget-icon"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg> Session Stats</h3>
+          </div>
+          <div class="sc-widget-body">
+            <div class="sc-stats-mini-grid">
+              <div class="sc-stat-mini"><span class="sc-stat-mini-val" id="stat-count">0</span><span class="sc-stat-mini-lbl">Gestures</span></div>
+              <div class="sc-stat-mini"><span class="sc-stat-mini-val" id="stat-avg-conf">0%</span><span class="sc-stat-mini-lbl">Avg Conf.</span></div>
+              <div class="sc-stat-mini"><span class="sc-stat-mini-val" id="stat-duration">0s</span><span class="sc-stat-mini-lbl">Duration</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Settings Widget -->
+        <div class="sc-widget sc-widget--dark sc-reveal" data-delay="300">
+          <div class="sc-widget-header">
+            <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="sc-widget-icon"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> Quick Settings</h3>
+          </div>
+          <div class="sc-widget-body">
+            <div class="sc-setting-row">
+              <label for="lang-select">Language</label>
+              <select id="lang-select" class="sc-select" data-lang-select>
+                <option value="en">🇺🇸 ASL</option>
+                <option value="ar">🇸🇦 العربية</option>
+                <option value="fr">🇫🇷 Français</option>
+                <option value="es">🇪🇸 Español</option>
+              </select>
+            </div>
+            <div class="sc-setting-row">
+              <label for="threshold-slider">Confidence <span id="threshold-val" style="float:right;color:var(--text-muted);font-size:12px">75%</span></label>
+              <input id="threshold-slider" type="range" min="10" max="99" value="75" step="1" class="sc-range">
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
   </div>
+</div>
 
-  <!-- ── Video panel ── -->
-  <div class="panel video-panel">
-    <h2 data-i18n="translator.live_stream">Live Stream</h2>
-    <div class="video-wrapper">
-      <img id="video-stream" src="" alt="Live sign language feed" width="640" height="480" decoding="async"
-        data-mjpeg-url="{{ url_for('stream.video_feed') }}" data-frame-url="{{ url_for('api.api_camera_frame') }}">
-      <div id="video-overlay" class="video-overlay">
-        <div class="spinner"></div>
-        <span class="overlay-msg" data-i18n="translator.connecting">Connecting to camera…</span>
-      </div>
-    </div>
-
-    <!-- ── User Coaching System ── -->
-    <div id="coaching-container" class="coaching-container hidden">
-      <div id="coaching-message" class="coaching-message">
-        <span id="coaching-icon" class="coaching-icon">ℹ️</span>
-        <span id="coaching-text" class="coaching-text">Coaching feedback will appear here</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── Info panel ── -->
-  <div class="panel info-panel">
-
-    <!-- 1. Current gesture -->
-    <h2 data-i18n="translator.current_gesture">Current Gesture</h2>
-    <div class="gesture-row">
-      <div id="recognized-text" class="recognized-text">—</div>
-      <span id="confidence-badge" class="badge low">0%</span>
-    </div>
-
-    <!-- 2. Word-commit progress -->
-    <div class="progress-wrap" title="Hold gesture steadily to commit a word">
-      <div id="commit-progress" class="progress-bar"></div>
-    </div>
-    <p class="progress-hint" id="progress-hint" data-i18n="translator.hold_gesture">Hold a gesture to build a word</p>
-
-    <!-- 3. Sentence output -->
-    <h2 style="margin-top:1.25rem;" data-i18n="translator.sentence">Sentence</h2>
-    <div id="sentence-display" class="sentence-display">…</div>
-
-    <!-- 4. Action buttons -->
-    <div class="controls" style="margin-top:.875rem;">
-      <button id="start-btn" type="button" data-i18n="translator.start">▶ Start</button>
-      <button id="pause-btn" type="button" class="btn-secondary" data-i18n="translator.pause">⏸ Pause</button>
-      <button id="speak-btn" type="button" data-i18n="translator.speak">🔊 Speak</button>
-      <button id="delete-word-btn" type="button" class="btn-secondary" data-i18n="translator.undo">← Undo</button>
-      <button id="clear-btn" type="button" class="btn-secondary btn-danger" data-i18n="translator.clear">🗑
-        Clear</button>
-      <button id="practice-btn" type="button" class="btn-secondary" data-i18n="translator.learn">🎓 Learn</button>
-      <button id="settings-btn" type="button" class="btn-secondary" data-i18n="translator.settings">⚙️ Settings</button>
-    </div>
-
-    <!-- 5. Settings -->
-    <div class="settings-row">
-      <div class="setting-group">
-        <label class="setting-label" for="lang-select" data-i18n="translator.language">Language</label>
-        <select id="lang-select" class="setting-select" data-lang-select>
-          <option value="en">🇺🇸 English</option>
-          <option value="ar">🇸🇦 العربية</option>
-          <option value="fr">🇫🇷 Français</option>
-          <option value="es">🇪🇸 Español</option>
-          <option value="de">🇩🇪 Deutsch</option>
-          <option value="zh">🇨🇳 中文</option>
-          <option value="ja">🇯🇵 日本語</option>
-          <option value="ko">🇰🇷 한국어</option>
-        </select>
-      </div>
-
-      <div class="setting-group" style="flex:1">
-        <label class="setting-label" for="threshold-slider" data-i18n="translator.confidence">
-          Confidence: <strong id="threshold-val">75%</strong>
-        </label>
-        <input id="threshold-slider" type="range" min="10" max="99" value="75" step="1"
-          title="Gesture must exceed this confidence to be recognised">
-      </div>
-
-      <div class="setting-group" style="justify-content:flex-end;padding-bottom:2px;">
-        <label class="training-toggle-label" for="training-mode-toggle">
-          <input id="training-mode-toggle" type="checkbox">
-          <span data-i18n="translator.training">Training</span>
-        </label>
-      </div>
-    </div>
-
-    <!-- 6. Training top-k panel -->
-    <div id="topk-panel" class="topk-panel hidden">
-      <h3 data-i18n="translator.raw_predictions">Raw Top Predictions (pre-threshold)</h3>
-      <ul id="topk-list" class="topk-list"></ul>
-    </div>
-
-    <!-- 6.5 Practice Mode / Gesture Learning Panel -->
-    <div id="practice-panel" class="practice-panel hidden">
-      <div class="practice-header">
-        <h3 data-i18n="translator.learn_gestures">Learn Gestures</h3>
-        <button id="practice-close-btn" class="practice-close" type="button">✕</button>
-      </div>
-
-      <div class="practice-search">
-        <input id="practice-search-input" type="text" class="practice-search-input"
-          placeholder="Search gesture (hello, thank you, yes...)" data-i18n-placeholder="translator.search_gesture">
-      </div>
-
-      <div class="practice-list" id="practice-list">
-        <!-- Dynamically populated gesture list -->
-      </div>
-
-      <div class="practice-visualizer hidden" id="practice-visualizer">
-        <div class="visualizer-header">
-          <h4 id="visualizer-title">Hello</h4>
-          <p id="visualizer-description" class="visualizer-description">Wave hand from right to left</p>
-          <span id="visualizer-difficulty" class="visualizer-badge beginner">Beginner</span>
-        </div>
-
-        <canvas id="gesture-canvas" class="gesture-canvas" width="280" height="360"></canvas>
-
-        <div class="visualizer-info">
-          <p class="info-text">Watch the hand position and try to replicate it.</p>
-        </div>
-
-        <button id="practice-back-btn" class="btn btn-secondary" type="button" data-i18n="translator.back_to_list">←
-          Back to List</button>
-      </div>
-    </div>
-
-    <!-- 7. Session Statistics -->
-    <div id="stats-panel" class="stats-panel" style="margin-top:1.25rem;">
-      <h2 data-i18n="translator.session_stats">Session Stats</h2>
-      <div class="stats-grid">
-        <div class="stat-card">
-          <span class="stat-label" data-i18n="translator.gestures">Gestures</span>
-          <span class="stat-value" id="stat-count">0</span>
-        </div>
-        <div class="stat-card">
-          <span class="stat-label" data-i18n="translator.avg_confidence">Avg Confidence</span>
-          <span class="stat-value" id="stat-avg-conf">0%</span>
-        </div>
-        <div class="stat-card">
-          <span class="stat-label" data-i18n="translator.accuracy">Accuracy</span>
-          <span class="stat-value" id="stat-accuracy">0%</span>
-        </div>
-        <div class="stat-card">
-          <span class="stat-label" data-i18n="translator.duration">Duration</span>
-          <span class="stat-value" id="stat-duration">0s</span>
-        </div>
-      </div>
-      <div class="stats-row">
-        <div class="stat-item">
-          <span class="stat-label" data-i18n="translator.best_gesture">Best Gesture</span>
-          <span class="stat-highlight" id="stat-best">—</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label" data-i18n="translator.most_common">Most Common</span>
-          <span class="stat-highlight" id="stat-common">—</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- 8. Recent history -->
-    <h2 style="margin-top:1.25rem;" data-i18n="translator.recent">Recent</h2>
-    <ul id="history-list" class="history-list"></ul>
-
-    <!-- Status strip -->
-    <div class="status-bar">
-      <span class="status-chip">
-        <span class="status-dot pulsing" id="camera-dot"></span>
-        <span id="camera-status" data-i18n="translator.camera_status">Camera: —</span>
-      </span>
-      <span class="status-chip">
-        <span class="status-dot" id="model-dot"></span>
-        <span id="model-status" data-i18n="translator.model_status">Model: —</span>
-      </span>
-      <span class="status-chip">
-        <span class="status-dot ok"></span>
-        <span id="fps-status" data-i18n="translator.fps">FPS: —</span>
-      </span>
-    </div>
-
-  </div>
+<!-- Hidden elements for JS compatibility -->
+<div id="hidden-elements" style="display:none">
+  <button id="pause-btn" type="button">Pause</button>
+  <button id="delete-word-btn" type="button">Undo</button>
+  <button id="practice-btn" type="button">Learn</button>
+  <button id="settings-btn" type="button">Settings</button>
+  <div id="settings-modal" class="settings-modal hidden"></div>
+  <div id="settings-overlay" class="settings-overlay"></div>
+  <button id="settings-close-btn" type="button">✕</button>
+  <button id="settings-reset-btn" class="btn btn-secondary" type="button">Reset</button>
+  <button id="settings-save-btn" class="btn btn-primary" type="button">Save</button>
+  <div id="topk-panel" class="hidden"></div>
+  <ul id="topk-list"></ul>
+  <div id="practice-panel" class="hidden"></div>
+  <button id="practice-close-btn" type="button">✕</button>
+  <input id="practice-search-input" type="text" />
+  <div id="practice-list"></div>
+  <div id="practice-visualizer" class="hidden"></div>
+  <button id="practice-back-btn" type="button">Back</button>
+  <canvas id="gesture-canvas" width="280" height="360"></canvas>
+  <div id="history-list"></div>
+  <button id="refresh-history-btn" type="button">Refresh</button>
+  <button id="clear-history-btn" type="button">Clear</button>
+  <input id="training-mode-toggle" type="checkbox" />
+  <span id="stat-accuracy"></span>
+  <span id="stat-best"></span>
+  <span id="stat-common"></span>
+  <select id="camera-select"></select>
+  <input id="settings-threshold-slider" type="range" />
+  <input id="settings-audio-toggle" type="checkbox" />
+  <input id="settings-training-toggle" type="checkbox" />
+  <input id="settings-theme-toggle" type="checkbox" />
+  <select id="settings-lang-select"></select>
+  <div id="commit-progress"></div>
+  <div id="progress-hint"></div>
+  <span id="confidence-badge"></span>
 </div>
 {% endblock %}
