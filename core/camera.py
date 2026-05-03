@@ -178,21 +178,24 @@ class CameraManager:
         with self._lock:
             if self._running and self._capture is not None:
                 return True
-        now = time.time()
-        if (
-            self._hw_probe_cache is not None
-            and (now - self._hw_probe_time) < self._hw_probe_ttl_seconds
-        ):
-            return self._hw_probe_cache
-        # Prevent concurrent probes from spawning multiple camera opens.
-        with self._lock:
-            # Re-check under the lock in case another thread just completed a probe.
+            now = time.time()
             if (
                 self._hw_probe_cache is not None
-                and (time.time() - self._hw_probe_time) < self._hw_probe_ttl_seconds
+                and (now - self._hw_probe_time) < self._hw_probe_ttl_seconds
             ):
                 return self._hw_probe_cache
+        # Run the probe outside the lock to avoid blocking other threads during the
+        # potentially slow camera open/close cycle.
         result = self._probe_hardware_available()
-        self._hw_probe_cache = result
-        self._hw_probe_time = time.time()
+        with self._lock:
+            # Only update the cache if it hasn't been refreshed by another thread
+            # while we were probing.
+            if (
+                self._hw_probe_cache is None
+                or (time.time() - self._hw_probe_time) >= self._hw_probe_ttl_seconds
+            ):
+                self._hw_probe_cache = result
+                self._hw_probe_time = time.time()
+            else:
+                result = self._hw_probe_cache
         return result
