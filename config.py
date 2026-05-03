@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import sys
 from pathlib import Path
 
 from model_contract import (
@@ -63,26 +62,20 @@ class Config:
         self.CAMERA_INDEX = int(os.getenv("CAMERA_INDEX", "0"))
         self.MODEL_INPUT_DIM = int(os.getenv("MODEL_INPUT_DIM", str(MODEL_INPUT_DIM)))
         if self.MODEL_INPUT_DIM != MODEL_INPUT_DIM:
-            print(
+            raise RuntimeError(
                 f"\n[FATAL] MODEL_INPUT_DIM must be {MODEL_INPUT_DIM} for the "
-                "current MediaPipe landmark pipeline.\n",
-                file=sys.stderr,
+                "current MediaPipe landmark pipeline.\n"
             )
-            sys.exit(1)
         self.MODEL_TYPE = os.getenv("MODEL_TYPE", DEFAULT_MODEL_TYPE).strip().lower()
         if self.MODEL_TYPE not in SUPPORTED_MODEL_TYPES:
-            print(
-                f"\n[FATAL] MODEL_TYPE must be one of {SUPPORTED_MODEL_TYPES}.\n",
-                file=sys.stderr,
+            raise RuntimeError(
+                f"\n[FATAL] MODEL_TYPE must be one of {SUPPORTED_MODEL_TYPES}.\n"
             )
-            sys.exit(1)
         self.SEQUENCE_LENGTH = int(os.getenv("SEQUENCE_LENGTH", str(SEQUENCE_LENGTH)))
         if self.SEQUENCE_LENGTH <= 0:
-            print(
-                "\n[FATAL] SEQUENCE_LENGTH must be a positive integer.\n",
-                file=sys.stderr,
+            raise RuntimeError(
+                "\n[FATAL] SEQUENCE_LENGTH must be a positive integer.\n"
             )
-            sys.exit(1)
         self.PREDICTION_CONFIDENCE_THRESHOLD = float(
             os.getenv("PREDICTION_CONFIDENCE_THRESHOLD", "0.75")
         )
