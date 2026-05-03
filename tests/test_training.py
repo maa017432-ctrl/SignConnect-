@@ -16,6 +16,8 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 from train_temporal import (
+    _augment_sequence_single,
+    _canonicalize_sequence,
     _filter_classes,
     _macro_f1,
     _signer_overlap,
@@ -225,3 +227,72 @@ def test_dataset_sequence_length_mismatch_exits(tmp_path) -> None:
     )
     assert result.returncode != 0
     assert "ERROR" in result.stdout or "ERROR" in result.stderr
+
+
+# ── _canonicalize_sequence tests ──────────────────────────────────────────────
+
+def test_canonicalize_sequence_shape_preserved() -> None:
+    rng = np.random.default_rng(0)
+    seq = rng.standard_normal((10, 126)).astype(np.float32)
+    result = _canonicalize_sequence(seq)
+    assert result.shape == seq.shape
+
+
+def test_canonicalize_sequence_zero_frame_unchanged() -> None:
+    seq = np.zeros((5, 126), dtype=np.float32)
+    result = _canonicalize_sequence(seq)
+    assert np.allclose(result, 0.0)
+
+
+# ── _augment_sequence_single tests ───────────────────────────────────────────
+
+def test_augment_sequence_single_shape_preserved() -> None:
+    """Output shape must equal input shape (T, F)."""
+    rng = np.random.default_rng(7)
+    seq = rng.standard_normal((30, 126)).astype(np.float32)
+    out = _augment_sequence_single(seq, rng)
+    assert out.shape == seq.shape
+
+
+def test_augment_sequence_single_dtype_float32() -> None:
+    """Output must be float32 regardless of input dtype."""
+    rng = np.random.default_rng(7)
+    seq = np.ones((30, 126), dtype=np.float64)
+    out = _augment_sequence_single(seq, rng)
+    assert out.dtype == np.float32
+
+
+def test_augment_sequence_single_zero_frames_remain_near_zero() -> None:
+    """Frames that were all-zero (no hand detected) receive only tiny jitter."""
+    rng = np.random.default_rng(7)
+    seq = np.zeros((30, 126), dtype=np.float32)
+    out = _augment_sequence_single(seq, rng)
+    # Spatial jitter is skipped for zero frames; only temporal interpolation
+    # can introduce small values from neighbouring zero frames → still ~zero.
+    assert np.abs(out).max() < 1e-5
+
+
+def test_augment_sequence_single_modifies_active_frames() -> None:
+    """Active (non-zero) frames must be numerically changed by augmentation."""
+    rng = np.random.default_rng(99)
+    seq = rng.standard_normal((30, 126)).astype(np.float32)
+    out = _augment_sequence_single(seq, np.random.default_rng(99))
+    # At least some values must differ due to jitter / scaling / temporal shift.
+    assert not np.allclose(seq, out)
+
+
+def test_augment_sequence_single_no_horizontal_flip() -> None:
+    """X-coordinates (indices 0, 3, 6 … mod 3 == 0) must never be negated."""
+    rng = np.random.default_rng(5)
+    T, F = 30, 126
+    # Build a sequence with all-positive values so a flip would invert the sign.
+    seq = np.abs(rng.standard_normal((T, F))).astype(np.float32) + 0.5
+    # Run augmentation many times and confirm X-coords stay positive on average.
+    x_coord_indices = list(range(0, F, 3))  # every 3rd feature is an X coord
+    for trial_seed in range(20):
+        out = _augment_sequence_single(seq, np.random.default_rng(trial_seed))
+        # Sum of X coords across all frames must remain positive (no sign flip).
+        assert out[:, x_coord_indices].sum() > 0, (
+            f"Horizontal flip detected at seed {trial_seed}"
+        )
+
