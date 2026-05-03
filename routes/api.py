@@ -146,10 +146,8 @@ def translate() -> tuple[dict[str, str | int], int]:
                 "SELECT id FROM sessions ORDER BY id DESC LIMIT 1"
             ).fetchone()
             if row is None:
-                connection.execute("INSERT INTO sessions (ended_at) VALUES (NULL)")
-                session_id = connection.execute(
-                    "SELECT id FROM sessions ORDER BY id DESC LIMIT 1"
-                ).fetchone()["id"]
+                cursor = connection.execute("INSERT INTO sessions (ended_at) VALUES (NULL)")
+                session_id = cursor.lastrowid
             else:
                 session_id = row["id"]
             connection.execute(
