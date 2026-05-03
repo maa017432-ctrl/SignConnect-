@@ -80,6 +80,9 @@
   const STATUS_MS = 4000;
   const PREDICT_MS = 300;   // HTTP fallback prediction poll interval
 
+  const ICON_PAUSE = '<svg viewBox="0 0 24 24" fill="currentColor" class="sc-btn-icon" style="width:14px;height:14px"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
+  const ICON_PLAY  = '<svg viewBox="0 0 24 24" fill="currentColor" class="sc-btn-icon" style="width:14px;height:14px"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+
   let streamTimer = null;
   let predictionTimer = null; // set only when socket.io unavailable
   let paused = true;
@@ -1399,7 +1402,7 @@
     if (startBtn) startBtn.disabled = true;
     if (pauseBtn) {
       pauseBtn.disabled = false;
-      pauseBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" class="sc-btn-icon" style="width:14px;height:14px"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Pause';
+      pauseBtn.innerHTML = ICON_PAUSE + ' Pause';
     }
     if (liveBadge) liveBadge.style.display = "";
     setDot(cameraDot, "pulsing");
@@ -1442,7 +1445,7 @@
     if (startBtn) startBtn.disabled = false;
     if (pauseBtn) {
       pauseBtn.disabled = false;
-      pauseBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" class="sc-btn-icon" style="width:14px;height:14px"><polygon points="5 3 19 12 5 21 5 3"/></svg> Resume';
+      pauseBtn.innerHTML = ICON_PLAY + ' Resume';
     }
     if (liveBadge) liveBadge.style.display = "none";
     updateFpsDisplay();
