@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import atexit
 import logging
-import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -39,11 +38,7 @@ def create_app() -> Flask:
     load_dotenv(env_path)
 
     app = Flask(__name__)
-    try:
-        app.config.from_object(Config())
-    except RuntimeError as exc:
-        print(str(exc), file=sys.stderr)
-        sys.exit(1)
+    app.config.from_object(Config())
 
     logging.basicConfig(
         level=getattr(logging, app.config["LOG_LEVEL"], logging.INFO),

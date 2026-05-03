@@ -31,7 +31,6 @@
     {% endif %}
 
     <form class="sc-auth-form" method="POST" action="{{ url_for('auth.signup_post') }}" novalidate>
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <div class="sc-form-row">
         <div class="sc-form-group">
           <label for="auth-first">First name</label>

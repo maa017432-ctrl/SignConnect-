@@ -34,7 +34,6 @@ class TTSEngine:
         self._available = False
         self._backend: Optional[str] = None
         self._unavailable_warned = False
-        self._pyttsx3_engine = None  # reused across calls to avoid per-call init overhead
         self._try_init()
         self._cleanup_stale_files()
 
@@ -67,15 +66,14 @@ class TTSEngine:
         try:
             if pyttsx3 is None:
                 raise RuntimeError("pyttsx3 is not installed")
-            self._pyttsx3_engine = pyttsx3.init()
-            self._pyttsx3_engine.stop()
+            engine = pyttsx3.init()
+            engine.stop()
             self._backend = "pyttsx3"
             self._available = True
             LOGGER.info("TTS engine initialized successfully with pyttsx3")
         except Exception as error:
             self._available = False
             self._backend = None
-            self._pyttsx3_engine = None
             LOGGER.warning("TTS engine initialization failed: %s", error)
 
     def synthesize(self, text: str, lang: str = "en") -> Optional[str]:
@@ -125,10 +123,11 @@ class TTSEngine:
                 tts = gTTS(text=normalized, lang=safe_lang)
                 tts.save(str(output_path))
             elif self._backend == "pyttsx3":
-                if pyttsx3 is None or self._pyttsx3_engine is None:
-                    raise RuntimeError("pyttsx3 is not available")
-                self._pyttsx3_engine.save_to_file(normalized, str(output_path))
-                self._pyttsx3_engine.runAndWait()
+                if pyttsx3 is None:
+                    raise RuntimeError("pyttsx3 is not installed")
+                engine = pyttsx3.init()
+                engine.save_to_file(normalized, str(output_path))
+                engine.runAndWait()
             else:
                 return None
         except Exception as error:

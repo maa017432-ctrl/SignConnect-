@@ -14,17 +14,17 @@ from pathlib import Path
 try:
     import cv2
 except ImportError:
-    cv2 = None  # type: ignore[assignment]
+    sys.exit("ERROR: opencv-python not installed. Run: pip install opencv-python")
 
 try:
     import mediapipe as mp
-except ImportError:
-    mp = None  # type: ignore[assignment]
+except ImportError as exc:
+    sys.exit(f"ERROR: mediapipe unavailable: {exc}")
 
 try:
     import numpy as np
 except ImportError:
-    np = None  # type: ignore[assignment]
+    sys.exit("ERROR: numpy not installed. Run: pip install numpy")
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -66,13 +66,11 @@ def _load_clips(
     videos_dir: Path,
     max_classes: int,
     min_videos_per_class: int,
-) -> tuple[list[Clip], int]:
-    """Return (selected clips, count of video_id entries without a local file)."""
+) -> list[Clip]:
     with info_path.open("r", encoding="utf-8") as file_obj:
         payload = json.load(file_obj)
 
     by_label: dict[str, list[Clip]] = {}
-    missing_video_count = 0
     for entry in payload:
         label = str(entry.get("gloss", "")).strip()
         if not label:
@@ -81,7 +79,6 @@ def _load_clips(
             video_id = str(instance.get("video_id", "")).strip()
             path = _video_path(videos_dir, video_id)
             if path is None:
-                missing_video_count += 1
                 continue
             by_label.setdefault(label, []).append(
                 Clip(
@@ -107,7 +104,7 @@ def _load_clips(
     selected: list[Clip] = []
     for _, clips in eligible:
         selected.extend(clips)
-    return selected, missing_video_count
+    return selected
 
 
 def _frame_indices(total_frames: int, start_frame: int, end_frame: int, sequence_length: int) -> list[int]:
@@ -141,27 +138,14 @@ def _extract_frame(hands: object, frame_bgr: object) -> np.ndarray | None:
     return np.asarray(hands_data[0][1] + hands_data[1][1], dtype=np.float32)
 
 
-def _extract_clip(
-    hands: object,
-    clip: Clip,
-    sequence_length: int,
-    min_detected_frames: int,
-) -> tuple[np.ndarray | None, str | None]:
-    """Extract a sequence from *clip*.
-
-    Returns ``(sequence, None)`` on success or ``(None, skip_reason)`` on
-    failure where *skip_reason* is one of:
-    ``"unreadable_video"``, ``"no_hands_detected"``,
-    ``"too_few_detected_frames"``.
-    """
+def _extract_clip(hands: object, clip: Clip, sequence_length: int, min_detected_frames: int) -> np.ndarray | None:
     cap = cv2.VideoCapture(str(clip.video_path))
     if not cap.isOpened():
-        return None, "unreadable_video"
+        return None
     try:
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
         sequence = np.zeros((sequence_length, FEATURE_DIM), dtype=np.float32)
         detected = 0
-        any_hand_seen = False
         last_landmarks: np.ndarray | None = None
         for out_idx, frame_idx in enumerate(
             _frame_indices(total_frames, clip.frame_start, clip.frame_end, sequence_length)
@@ -177,15 +161,12 @@ def _extract_clip(
                 if last_landmarks is not None:
                     sequence[out_idx] = last_landmarks
                 continue
-            any_hand_seen = True
             sequence[out_idx] = landmarks
             last_landmarks = landmarks
             detected += 1
-        if not any_hand_seen:
-            return None, "no_hands_detected"
         if detected < min_detected_frames:
-            return None, "too_few_detected_frames"
-        return sequence, None
+            return None
+        return sequence
     finally:
         cap.release()
 
@@ -241,13 +222,6 @@ def _load_checkpoint(
 
 
 def main() -> None:
-    if cv2 is None:
-        sys.exit("ERROR: opencv-python not installed. Run: pip install opencv-python")
-    if mp is None:
-        sys.exit("ERROR: mediapipe unavailable. Run: pip install mediapipe==0.10.9")
-    if np is None:
-        sys.exit("ERROR: numpy not installed. Run: pip install numpy")
-
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--wlasl-dir", type=Path, default=DEFAULT_WLASL_DIR)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
@@ -273,7 +247,7 @@ def main() -> None:
     if not videos_dir.exists():
         sys.exit(f"ERROR: videos directory not found: {videos_dir}")
 
-    clips, missing_video_count = _load_clips(
+    clips = _load_clips(
         info_path=info_path,
         videos_dir=videos_dir,
         max_classes=args.max_classes,
@@ -297,10 +271,7 @@ def main() -> None:
         manifest_path.unlink()
     skipped = 0
     skipped_reasons: dict[str, int] = {
-        "missing_video": missing_video_count,
-        "unreadable_video": 0,
-        "no_hands_detected": 0,
-        "too_few_detected_frames": 0,
+        "missing_landmarks_or_low_detection": 0,
         "already_processed": 0,
     }
     split_counts_selected: dict[str, int] = {}
@@ -324,7 +295,6 @@ def main() -> None:
     print(f"Output            : {output_path}", flush=True)
     print(f"Candidate clips   : {len(clips)}", flush=True)
     print(f"Sequence length   : {args.sequence_length}", flush=True)
-    print(f"Missing video files   : {missing_video_count}", flush=True)
     print(f"Checkpoint samples: {len(sequences)}", flush=True)
     print(f"Checkpoint clips  : {len(processed_clip_keys)}", flush=True)
     print(f"Duplicate video_ids in selected set: {len(duplicate_video_ids)}", flush=True)
@@ -346,9 +316,8 @@ def main() -> None:
             shard_path = shard_dir / f"{shard_hash}.npy"
             if shard_path.exists():
                 sequence = np.load(shard_path).astype(np.float32)
-                skip_reason = None
             else:
-                sequence, skip_reason = _extract_clip(
+                sequence = _extract_clip(
                     hands=hands,
                     clip=clip,
                     sequence_length=args.sequence_length,
@@ -358,8 +327,9 @@ def main() -> None:
                     np.save(shard_path, sequence)
             if sequence is None:
                 skipped += 1
-                reason_key = skip_reason or "unreadable_video"
-                skipped_reasons[reason_key] = skipped_reasons.get(reason_key, 0) + 1
+                skipped_reasons["missing_landmarks_or_low_detection"] = (
+                    skipped_reasons.get("missing_landmarks_or_low_detection", 0) + 1
+                )
             else:
                 sequences.append(sequence)
                 labels.append(clip.label)
@@ -412,7 +382,6 @@ def main() -> None:
                 "dataset": str(output_path),
                 "sequence_length": args.sequence_length,
                 "feature_dim": FEATURE_DIM,
-                "missing_video_files": missing_video_count,
                 "selected_clips_total": len(clips),
                 "processed_clip_keys_total": len(processed_clip_keys),
                 "kept_samples_total": len(sequences),

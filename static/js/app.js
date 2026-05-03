@@ -346,9 +346,6 @@
 
     // Track gesture
     sessionStats.totalGestures++;
-    if (sessionStats.confidenceScores.length >= 1000) {
-      sessionStats.confidenceScores.shift();
-    }
     sessionStats.confidenceScores.push(confidence);
 
     // Track gesture frequency
@@ -423,9 +420,6 @@
   }
 
   function resetSessionStats() {
-    const oldTimer = sessionStats.durationTimer;
-    if (oldTimer) clearInterval(oldTimer);
-
     sessionStats = {
       totalGestures: 0,
       confidenceScores: [],
@@ -444,6 +438,8 @@
     if (statDuration) statDuration.textContent = "0s";
     if (statBest) statBest.textContent = "—";
     if (statCommon) statCommon.textContent = "—";
+
+    if (sessionStats.durationTimer) clearInterval(sessionStats.durationTimer);
   }
 
   /* ── Practice Mode / Gesture Learning System ────────────────── */
@@ -831,11 +827,6 @@
 
     socket.on("connect", () => {
       socketConnected = true;
-      // Stop HTTP fallback poll now that WebSocket is up.
-      if (predictionTimer) {
-        clearInterval(predictionTimer);
-        predictionTimer = null;
-      }
       LOGGER("WebSocket connected");
     });
 
@@ -853,8 +844,8 @@
       updatePredictionUI(data);
     });
 
-    // Start HTTP polling now as a reliable fallback; the connect handler will
-    // stop it once the WebSocket handshake succeeds.
+    // Keep polling as a reliable fallback. Waitress can serve the app, but
+    // SocketIO push may be unavailable depending on the local server path.
     startPredictionPoll();
   }
 

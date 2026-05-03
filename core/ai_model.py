@@ -279,9 +279,7 @@ class GestureClassifier:
         flat = np.concatenate([hand1, hand2])
 
         if self._norm_mean is not None and self._norm_std is not None:
-            # Guard against zero-variance features to avoid NaN propagation.
-            safe_std = np.where(self._norm_std < 1e-8, 1.0, self._norm_std)
-            flat = (flat - self._norm_mean) / safe_std
+            flat = (flat - self._norm_mean) / self._norm_std
         return flat.reshape(1, expected_dim)
 
     def _prepare_temporal_features(self, landmarks_array: np.ndarray) -> np.ndarray:

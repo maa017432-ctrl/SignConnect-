@@ -90,13 +90,8 @@ class GestureDetector:
 
             annotated = frame.copy()
 
-            # Two fixed slots: slot 0 = left hand, slot 1 = right hand.
-            # MediaPipe reports handedness relative to the *mirrored* image, so
-            # its "Left" label corresponds to the user's right hand appearing on
-            # the left side of the video feed.  We map "Left" → slot 0 to stay
-            # consistent with the legacy mean-X ordering used during training.
-            hand_slots: list[np.ndarray | None] = [None, None]
-            for i, hand_landmarks in enumerate(results.multi_hand_landmarks[:2]):
+            hands_data: list[tuple[float, np.ndarray]] = []
+            for hand_landmarks in results.multi_hand_landmarks[:2]:
                 self._drawing_utils.draw_landmarks(
                     annotated, hand_landmarks, self._hands_module.HAND_CONNECTIONS
                 )
@@ -108,15 +103,18 @@ class GestureDetector:
                     ],
                     dtype=np.float32,
                 )
-                handedness_label = (
-                    results.multi_handedness[i].classification[0].label
+                mean_x = float(
+                    sum(lm.x for lm in hand_landmarks.landmark)
+                    / max(1, len(hand_landmarks.landmark))
                 )
-                slot = 0 if handedness_label == "Left" else 1
-                hand_slots[slot] = flat
+                hands_data.append((mean_x, flat))
 
-            left_hand = hand_slots[0] if hand_slots[0] is not None else np.zeros(63, dtype=np.float32)
-            right_hand = hand_slots[1] if hand_slots[1] is not None else np.zeros(63, dtype=np.float32)
-            flattened = np.concatenate([left_hand, right_hand])
+            hands_data.sort(key=lambda item: item[0])
+
+            if len(hands_data) == 1:
+                hands_data.append((2.0, np.zeros(63, dtype=np.float32)))
+
+            flattened = np.concatenate([hands_data[0][1], hands_data[1][1]])
             return annotated, flattened
         except Exception as error:
             LOGGER.warning("Hand landmark detection failed: %s", error)

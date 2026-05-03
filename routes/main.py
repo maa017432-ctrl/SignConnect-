@@ -52,34 +52,16 @@ def service_worker() -> Response:
 
 @main_bp.get("/history")
 def history() -> str:
-    """Render latest translation history from SQLite.
-
-    Results are scoped to the current user when authenticated, or to
-    anonymous entries otherwise.
-    """
-    user_id = session.get("user_id")
+    """Render latest translation history from SQLite."""
     with get_connection(current_app.config["DATABASE_PATH"]) as connection:
-        if user_id is not None:
-            rows = connection.execute(
-                """
-                SELECT gesture_label, confidence, audio_file, created_at
-                FROM translations
-                WHERE user_id = ?
-                ORDER BY id DESC
-                LIMIT 50
-                """,
-                (user_id,),
-            ).fetchall()
-        else:
-            rows = connection.execute(
-                """
-                SELECT gesture_label, confidence, audio_file, created_at
-                FROM translations
-                WHERE user_id IS NULL
-                ORDER BY id DESC
-                LIMIT 50
-                """
-            ).fetchall()
+        rows = connection.execute(
+            """
+            SELECT gesture_label, confidence, audio_file, created_at
+            FROM translations
+            ORDER BY id DESC
+            LIMIT 50
+            """
+        ).fetchall()
     return render_template("history.html", rows=rows, **_user_ctx())
 
 

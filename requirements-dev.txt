@@ -1,3 +1,0 @@
-# Development/test-only dependencies — not required for production deployment.
--r requirements.txt
-pytest>=8.0.0

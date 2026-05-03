@@ -6,7 +6,7 @@ import json
 import logging
 from pathlib import Path
 
-from flask import Blueprint, current_app, jsonify, request, session
+from flask import Blueprint, current_app, jsonify, request
 from flask.wrappers import Response
 
 from database.db import get_connection
@@ -20,15 +20,12 @@ _MAX_TEXT_LEN = 500
 
 
 def _api_key_ok() -> bool:
-    """Return True if the request carries a valid API key, or if no key is configured.
-
-    The DEBUG flag no longer bypasses the check — only an absent ``API_KEY``
-    configuration value does (open/dev environment).  This prevents a
-    misconfigured ``DEBUG=True`` from accidentally opening admin endpoints.
-    """
+    """Return True if the request carries a valid API key, or if no key is configured."""
+    if current_app.config.get("DEBUG", False):
+        return True
     required = current_app.config.get("API_KEY", "")
     if not required:
-        return True  # No key configured; allow (development/open environment)
+        return False
     return request.headers.get("X-API-Key", "") == required
 
 
@@ -46,7 +43,7 @@ def status() -> tuple[dict[str, object], int]:
     return (
         jsonify(
             {
-                "camera": camera_manager.is_available,
+                "camera": camera_manager.is_available(),
                 "model": classifier.is_available,
                 "model_demo_mode": classifier.is_demo_mode,
                 "model_type": getattr(classifier, "model_type", "unknown"),
@@ -144,7 +141,6 @@ def translate() -> tuple[dict[str, str | int], int]:
     try:
         latest = current_app.extensions.get("latest_prediction") or {}
         confidence = float(latest.get("confidence") or 0.0) or None
-        user_id = session.get("user_id")
         with get_connection(current_app.config["DATABASE_PATH"]) as connection:
             row = connection.execute(
                 "SELECT id FROM sessions ORDER BY id DESC LIMIT 1"
@@ -158,10 +154,10 @@ def translate() -> tuple[dict[str, str | int], int]:
                 session_id = row["id"]
             connection.execute(
                 """
-                INSERT INTO translations (session_id, user_id, gesture_label, confidence, audio_file)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO translations (session_id, gesture_label, confidence, audio_file)
+                VALUES (?, ?, ?, ?)
                 """,
-                (session_id, user_id, text, confidence, filename),
+                (session_id, text, confidence, filename),
             )
     except Exception:
         LOGGER.exception("Failed to persist translation to database")
@@ -171,34 +167,16 @@ def translate() -> tuple[dict[str, str | int], int]:
 
 @api_bp.get("/api/history")
 def get_history() -> tuple[list[dict[str, str | float | None]], int]:
-    """Return latest translation history as JSON list.
-
-    Results are scoped to the current user when the request is authenticated.
-    Unauthenticated requests see anonymous (no user_id) entries only.
-    """
-    user_id = session.get("user_id")
+    """Return latest translation history as JSON list."""
     with get_connection(current_app.config["DATABASE_PATH"]) as connection:
-        if user_id is not None:
-            rows = connection.execute(
-                """
-                SELECT id, gesture_label, confidence, audio_file, created_at
-                FROM translations
-                WHERE user_id = ?
-                ORDER BY id DESC
-                LIMIT 50
-                """,
-                (user_id,),
-            ).fetchall()
-        else:
-            rows = connection.execute(
-                """
-                SELECT id, gesture_label, confidence, audio_file, created_at
-                FROM translations
-                WHERE user_id IS NULL
-                ORDER BY id DESC
-                LIMIT 50
-                """
-            ).fetchall()
+        rows = connection.execute(
+            """
+            SELECT id, gesture_label, confidence, audio_file, created_at
+            FROM translations
+            ORDER BY id DESC
+            LIMIT 50
+            """
+        ).fetchall()
 
     payload = [
         {
@@ -241,20 +219,11 @@ def update_config() -> tuple[dict[str, float | str], int]:
 
 @api_bp.delete("/api/history")
 def clear_history() -> tuple[dict[str, str], int]:
-    """Delete translation rows from the database.
-
-    Requires a valid API key when one is configured.  Deletion is scoped to
-    the current user when authenticated; all rows are removed when the request
-    carries a valid admin API key.
-    """
+    """Delete all translation rows from the database."""
     if not _api_key_ok():
         return jsonify({"error": "Unauthorized", "code": 401}), 401
-    user_id = session.get("user_id")
     with get_connection(current_app.config["DATABASE_PATH"]) as connection:
-        if user_id is not None:
-            connection.execute("DELETE FROM translations WHERE user_id = ?", (user_id,))
-        else:
-            connection.execute("DELETE FROM translations WHERE user_id IS NULL")
+        connection.execute("DELETE FROM translations")
     return jsonify({"status": "cleared"}), 200
 
 

@@ -15,7 +15,6 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE TABLE IF NOT EXISTS translations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id INTEGER REFERENCES sessions(id),
-    user_id INTEGER REFERENCES users(id),
     gesture_label TEXT NOT NULL,
     confidence REAL,
     audio_file TEXT,
