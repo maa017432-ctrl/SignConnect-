@@ -1,0 +1,18 @@
+{
+  "data": "/content/drive/MyDrive/SignConnectColab/sequences/tier100_sequences.npz",
+  "epochs": 150,
+  "batch_size": 32,
+  "max_classes": 100,
+  "exact_classes": 0,
+  "min_samples_per_class": 8,
+  "lr": 0.001,
+  "dropout": 0.4,
+  "seed": 42,
+  "arch": "bigru_attention",
+  "split_mode": "official",
+  "augment": true,
+  "drive_checkpoint": "",
+  "sequence_length": 30,
+  "feature_dim": 126,
+  "tensorflow_version": "2.16.1"
+}
