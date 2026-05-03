@@ -16,6 +16,7 @@
   const modelStatus = document.getElementById("model-status");
   const modelDot = document.getElementById("model-dot");
   const fpsStatus = document.getElementById("fps-status") || document.getElementById("fps-display");
+  const liveBadge = document.getElementById("sc-live-badge");
   const startBtn = document.getElementById("start-btn");
   const pauseBtn = document.getElementById("pause-btn");
   const clearBtn = document.getElementById("clear-btn");
@@ -969,15 +970,16 @@
   function updateFpsDisplay() {
     if (!fpsStatus) return;
     if (paused || fpsWindow.length === 0) {
-      fpsStatus.textContent = "FPS: —";
+      fpsStatus.textContent = "—";
       return;
     }
     const avg = fpsWindow.reduce((a, b) => a + b, 0) / fpsWindow.length;
-    fpsStatus.textContent = `FPS: ${Math.min(60, Math.max(1, Math.round(1000 / Math.max(16, avg))))}`;
+    fpsStatus.textContent = `${Math.min(60, Math.max(1, Math.round(1000 / Math.max(16, avg))))}`;
   }
 
   /* ── Shared prediction UI updater (called by socket OR poll) ── */
   function updatePredictionUI(data) {
+    if (paused) return;
     const display = data.smoothed_label || data.label;
     if (recognizedText) recognizedText.textContent = display || "—";
     updateConfidence(display ? data.confidence : 0);
@@ -1395,9 +1397,14 @@
 
     showOverlay("Connecting to camera…");
     if (startBtn) startBtn.disabled = true;
-    if (pauseBtn) pauseBtn.disabled = false;
+    if (pauseBtn) {
+      pauseBtn.disabled = false;
+      pauseBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" class="sc-btn-icon" style="width:14px;height:14px"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Pause';
+    }
+    if (liveBadge) liveBadge.style.display = "";
     setDot(cameraDot, "pulsing");
     startSessionTimer();
+    startPredictionPoll();
 
     // ── Camera connection timeout (30 s) ──
     setTimeout(() => {
@@ -1426,13 +1433,18 @@
   function pauseStream() {
     paused = true;
     if (streamTimer) { clearInterval(streamTimer); streamTimer = null; }
+    if (predictionTimer) { clearInterval(predictionTimer); predictionTimer = null; }
     if (video) video.removeAttribute("src");
     if (blobUrl) { URL.revokeObjectURL(blobUrl); blobUrl = null; }
     prevFrameAt = 0;
     fpsWindow = [];
     showOverlay("Stream paused");
     if (startBtn) startBtn.disabled = false;
-    if (pauseBtn) pauseBtn.disabled = true;
+    if (pauseBtn) {
+      pauseBtn.disabled = false;
+      pauseBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" class="sc-btn-icon" style="width:14px;height:14px"><polygon points="5 3 19 12 5 21 5 3"/></svg> Resume';
+    }
+    if (liveBadge) liveBadge.style.display = "none";
     updateFpsDisplay();
     resetCoachingState();
     if (sessionStats.durationTimer) clearInterval(sessionStats.durationTimer);
@@ -1442,8 +1454,7 @@
   function bindButtons() {
     if (startBtn) startBtn.addEventListener("click", startStream);
     if (pauseBtn) {
-      pauseBtn.addEventListener("click", pauseStream);
-      pauseBtn.disabled = true;
+      pauseBtn.addEventListener("click", () => paused ? startStream() : pauseStream());
     }
     if (speakBtn) speakBtn.addEventListener("click", speakText);
     if (copyBtn) copyBtn.addEventListener("click", copySentence);
