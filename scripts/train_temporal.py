@@ -6,6 +6,7 @@ import argparse
 import csv
 import hashlib
 import json
+import math
 import os
 import random
 import sys
@@ -59,18 +60,28 @@ def _canonicalize_hand(hand: np.ndarray) -> np.ndarray:
     return (points / scale).reshape(-1)
 
 
+def _canonicalize_sequence(seq: np.ndarray) -> np.ndarray:
+    """Canonicalize a single (T, F) landmark sequence frame-by-frame.
+
+    Translates each hand's wrist to the origin and normalises by the span of
+    metacarpal joints so that the representation is scale- and
+    translation-invariant.  Zero frames (no detected hands) are left as-is.
+    """
+    result = np.zeros_like(seq, dtype=np.float32)
+    for frame_idx in range(seq.shape[0]):
+        frame = seq[frame_idx].astype(np.float32)
+        if np.abs(frame).sum() < 1e-8:
+            continue
+        hand1 = _canonicalize_hand(frame[:63])
+        hand2_raw = frame[63:126]
+        hand2 = _canonicalize_hand(hand2_raw) if np.abs(hand2_raw).sum() > 1e-8 else hand2_raw
+        result[frame_idx] = np.concatenate([hand1, hand2])
+    return result
+
+
 def canonicalize_sequences(X: np.ndarray) -> np.ndarray:
-    canonical = np.zeros_like(X, dtype=np.float32)
-    for sample_idx in range(X.shape[0]):
-        for frame_idx in range(X.shape[1]):
-            frame = X[sample_idx, frame_idx].astype(np.float32)
-            if np.abs(frame).sum() < 1e-8:
-                continue
-            hand1 = _canonicalize_hand(frame[:63])
-            hand2_raw = frame[63:126]
-            hand2 = _canonicalize_hand(hand2_raw) if np.abs(hand2_raw).sum() > 1e-8 else hand2_raw
-            canonical[sample_idx, frame_idx] = np.concatenate([hand1, hand2])
-    return canonical
+    """Canonicalize an (N, T, F) batch of landmark sequences."""
+    return np.stack([_canonicalize_sequence(X[i]) for i in range(X.shape[0])], axis=0)
 
 
 def build_model(
@@ -230,13 +241,65 @@ def _macro_f1(y_true: np.ndarray, y_pred: np.ndarray, num_classes: int) -> float
     return float(np.mean(scores)) if scores else 0.0
 
 
-def _augment_sequence(X: np.ndarray, rng: np.random.Generator, noise_std: float = 0.005) -> np.ndarray:
-    """Apply lightweight augmentation to a batch of sequences (in-place copy)."""
-    result = X.copy()
-    # Small Gaussian noise on non-zero frames
-    mask = np.abs(result).sum(axis=-1, keepdims=True) > 1e-8
-    result += mask * rng.standard_normal(result.shape).astype(np.float32) * noise_std
-    return result
+def _augment_sequence_single(seq: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+    """Apply spatial and temporal augmentations to a single (T, F) landmark sequence.
+
+    All operations are purely mathematical transforms on 3D landmark coordinates.
+    NO horizontal (X-axis) mirroring is applied — left/right hand dominance is
+    semantically significant in ASL and must be preserved.
+
+    Applied augmentations:
+        - **Spatial Jitter**   : Zero-mean Gaussian noise (std=0.01) on active frames.
+        - **Spatial Scaling**  : Uniform scale factor sampled from U(0.85, 1.15).
+        - **Temporal Scaling** : Time-axis stretch/compress via linear interpolation
+                                 followed by re-sampling back to the original T frames.
+
+    Args:
+        seq: Input landmark array of shape (T, F).
+        rng: NumPy random Generator for reproducible stochastic operations.
+
+    Returns:
+        Augmented copy of *seq* with the same shape (T, F).
+    """
+    result = seq.astype(np.float32).copy()
+    T, _ = result.shape
+
+    # Boolean mask for frames that contain actual detections — shape (T,).
+    active: np.ndarray = np.abs(result).sum(axis=-1) > 1e-8
+
+    # ── Spatial Jitter ────────────────────────────────────────────────────────
+    # Additive zero-mean Gaussian noise (std=0.01) applied only to non-zero
+    # frames.  This simulates small detector uncertainty in landmark positions.
+    noise = rng.standard_normal(result.shape).astype(np.float32) * 0.01
+    result[active] += noise[active]
+
+    # ── Spatial Scaling ───────────────────────────────────────────────────────
+    # Multiply every landmark coordinate by a single per-sample scale factor.
+    # This simulates variation in signer distance from the camera.
+    scale_factor = float(rng.uniform(0.85, 1.15))
+    result[active] *= scale_factor
+
+    # ── Temporal Scaling ─────────────────────────────────────────────────────
+    # Stretch or compress the sequence along the time axis using linear
+    # interpolation to a new_len, then resample uniformly back to T frames.
+    # This simulates signers performing the same gesture at different speeds.
+    stretch = float(rng.uniform(0.8, 1.2))
+    new_len = max(2, int(round(T * stretch)))
+
+    # Compute source positions (floating point) in the original T-frame array.
+    src_pos = np.linspace(0, T - 1, new_len)
+    src_floor = np.floor(src_pos).astype(int)
+    src_ceil = np.minimum(src_floor + 1, T - 1)
+    frac = (src_pos - src_floor).reshape(-1, 1).astype(np.float32)
+
+    # Linear interpolation between adjacent frames.
+    resampled = (1.0 - frac) * result[src_floor] + frac * result[src_ceil]  # (new_len, F)
+
+    # Resample the stretched sequence back to T frames.
+    out_pos = np.round(np.linspace(0, new_len - 1, T)).astype(int)
+    result = resampled[out_pos]  # (T, F)
+
+    return result.astype(np.float32)
 
 
 def _signer_overlap(
@@ -307,6 +370,95 @@ def _write_confusion(path: Path, y_true: np.ndarray, y_pred: np.ndarray, label_m
             writer.writerow([label] + matrix[idx].tolist())
 
 
+# Provide a safe base class for LandmarkDataGenerator when TensorFlow is absent
+# (keeps the module importable for unit tests that don't need the full stack).
+_KerasSequenceBase = keras.utils.Sequence if keras is not None else object  # type: ignore[union-attr]
+
+
+class LandmarkDataGenerator(_KerasSequenceBase):  # type: ignore[misc,valid-type]
+    """Memory-efficient Keras Sequence generator for landmark sequence training.
+
+    Reads individual samples from a pre-canonicalized in-memory array on demand,
+    applies per-sample normalisation and optional landmark augmentation inside
+    each batch call.  This avoids materialising an augmented copy of the entire
+    training set in RAM — critical for resource-constrained runtimes such as
+    Google Colab T4 with ~12 GB of system RAM.
+
+    Args:
+        X_canonical: Canonicalized landmark array of shape (N, T, F).
+        y:           Integer label array of shape (N,).
+        indices:     Row indices into *X_canonical* / *y* for this data split.
+        mean:        Per-feature normalisation mean, shape (F,).
+        std:         Per-feature normalisation std (never zero), shape (F,).
+        batch_size:  Number of samples per batch.
+        augment:     When True, apply :func:`_augment_sequence_single` per sample.
+        seed:        Integer RNG seed for shuffling and augmentation.
+        shuffle:     Reshuffle *indices* at the start of every epoch when True.
+    """
+
+    def __init__(
+        self,
+        X_canonical: np.ndarray,
+        y: np.ndarray,
+        indices: np.ndarray,
+        mean: np.ndarray,
+        std: np.ndarray,
+        batch_size: int,
+        augment: bool = False,
+        seed: int = 42,
+        shuffle: bool = True,
+    ) -> None:
+        self._X = X_canonical
+        self._y = y
+        self._indices = indices.copy()
+        # Pre-reshape for efficient broadcast in __getitem__.
+        self._mean = mean.reshape(1, -1).astype(np.float32)
+        self._std = std.reshape(1, -1).astype(np.float32)
+        self._batch_size = batch_size
+        self._augment = augment
+        self._rng = np.random.default_rng(seed)
+        self._shuffle = shuffle
+        if shuffle:
+            self._rng.shuffle(self._indices)
+
+    # ── Keras Sequence protocol ───────────────────────────────────────────────
+
+    def __len__(self) -> int:
+        """Number of batches per epoch (ceiling division)."""
+        return math.ceil(len(self._indices) / self._batch_size)
+
+    def on_epoch_end(self) -> None:
+        """Reshuffle the sample order at the end of every training epoch."""
+        if self._shuffle:
+            self._rng.shuffle(self._indices)
+
+    def __getitem__(self, batch_idx: int) -> tuple[np.ndarray, np.ndarray]:
+        """Return normalised (and optionally augmented) (X_batch, y_batch).
+
+        Args:
+            batch_idx: Zero-based batch index within the current epoch.
+
+        Returns:
+            Tuple of ``(X_batch, y_batch)`` with shapes
+            ``(batch_size, T, F)`` and ``(batch_size,)`` respectively.
+        """
+        start = batch_idx * self._batch_size
+        batch_indices = self._indices[start : start + self._batch_size]
+        T, F = self._X.shape[1], self._X.shape[2]
+        X_batch = np.empty((len(batch_indices), T, F), dtype=np.float32)
+
+        for local_i, global_i in enumerate(batch_indices):
+            # Normalise the pre-canonicalized sequence (broadcast over T axis).
+            seq = (self._X[global_i].astype(np.float32) - self._mean) / self._std
+            # Apply stochastic landmark augmentations (training only).
+            if self._augment:
+                seq = _augment_sequence_single(seq, self._rng)
+            X_batch[local_i] = seq
+
+        y_batch = self._y[batch_indices]
+        return X_batch, y_batch
+
+
 def main() -> None:
     if np is None:
         sys.exit("ERROR: numpy not installed. Run: pip install numpy")
@@ -315,18 +467,18 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data", type=Path, default=DEFAULT_DATASET)
-    parser.add_argument("--epochs", type=int, default=60)
-    parser.add_argument("--batch-size", type=int, default=16)
+    parser.add_argument("--epochs", type=int, default=150)
+    parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--max-classes", type=int, default=50)
     parser.add_argument("--min-samples-per-class", type=int, default=8)
     parser.add_argument("--lr", type=float, default=1e-3)
-    parser.add_argument("--dropout", type=float, default=0.35)
+    parser.add_argument("--dropout", type=float, default=0.4)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
         "--arch",
         choices=["bigru", "bigru_attention"],
-        default="bigru",
-        help="Model architecture (default: bigru)",
+        default="bigru_attention",
+        help="Model architecture (default: bigru_attention)",
     )
     parser.add_argument(
         "--split-mode",
@@ -337,7 +489,30 @@ def main() -> None:
     parser.add_argument(
         "--augment",
         action="store_true",
-        help="Apply lightweight noise augmentation to training sequences",
+        help="Apply landmark augmentation to training sequences (jitter, scaling, temporal resampling)",
+    )
+    parser.add_argument(
+        "--exact-classes",
+        type=int,
+        default=0,
+        metavar="N",
+        help=(
+            "After --max-classes filtering, further restrict to exactly N classes "
+            "(top N by sample count, then re-sorted alphabetically). "
+            "Set to 31 to match the application LABELS_COUNT=31 config. "
+            "0 = disabled (default)."
+        ),
+    )
+    parser.add_argument(
+        "--drive-checkpoint",
+        type=str,
+        default="",
+        metavar="DIR",
+        help=(
+            "Path to a Google Drive directory (e.g. /content/drive/MyDrive/) "
+            "where an additional ModelCheckpoint will save gesture_model_best.h5 "
+            "to survive Colab preemptions.  Leave empty to disable (default)."
+        ),
     )
     args = parser.parse_args()
 
@@ -370,6 +545,51 @@ def main() -> None:
     # Keep signer_ids aligned after class filtering
     keep_mask = np.asarray([str(lbl) in {v for v in label_map.values()} for lbl in labels], dtype=bool)
     signer_ids = raw_signer_ids[keep_mask]
+
+    # ── Optional exact-class subsetting ──────────────────────────────────────
+    # When --exact-classes N is specified, further restrict to exactly the top N
+    # classes by sample count (e.g. N=31 to match LABELS_COUNT=31 in the app).
+    # The surviving classes are re-sorted alphabetically and re-indexed 0..N-1
+    # so the resulting label_map is contiguous and correct for the application.
+    if args.exact_classes > 0 and args.exact_classes < len(label_map):
+        n_before = len(label_map)
+        # Count samples per class index within the current filtered set.
+        class_counts_now = np.bincount(y, minlength=len(label_map))
+        # Take the top exact_classes indices sorted by descending count.
+        top_indices = sorted(
+            range(len(label_map)),
+            key=lambda c: -int(class_counts_now[c]),
+        )[:args.exact_classes]
+        keep_class_set = set(top_indices)
+
+        # Filter samples to the chosen class subset.
+        sample_mask = np.isin(y, sorted(keep_class_set))
+        X = X[sample_mask]
+        splits = splits[sample_mask]
+        signer_ids = signer_ids[sample_mask]
+        y_before_remap = y[sample_mask]
+
+        # Rebuild alphabetically ordered label_map with contiguous indices 0..N-1.
+        kept_labels_sorted = sorted(label_map[c] for c in keep_class_set)
+        new_label_to_idx: dict[str, int] = {lbl: i for i, lbl in enumerate(kept_labels_sorted)}
+        old_label_map = label_map
+        label_map = {i: lbl for i, lbl in enumerate(kept_labels_sorted)}
+
+        # Remap y to new contiguous class indices.
+        old_to_new = {c: new_label_to_idx[old_label_map[c]] for c in keep_class_set}
+        y = np.array([old_to_new[c] for c in y_before_remap], dtype=np.int32)
+
+        print(
+            f"Exact-class subset: {len(label_map)} classes kept "
+            f"(from {n_before} after max-class filter); "
+            f"{int(sample_mask.sum())} samples retained."
+        )
+    elif args.exact_classes > 0 and args.exact_classes >= len(label_map):
+        print(
+            f"WARNING: --exact-classes {args.exact_classes} >= available classes "
+            f"{len(label_map)}; subsetting skipped."
+        )
+
     X = canonicalize_sequences(X)
 
     train_idx, val_idx, test_idx = _split_indices(
@@ -384,14 +604,12 @@ def main() -> None:
 
     overlap_report = _signer_overlap(signer_ids, train_idx, val_idx, test_idx)
 
+    # Compute normalisation statistics from training samples only.
     mean = X[train_idx].reshape(-1, FRAME_FEATURE_DIM).mean(axis=0)
     std = X[train_idx].reshape(-1, FRAME_FEATURE_DIM).std(axis=0) + 1e-8
-    X = (X - mean.reshape(1, 1, FRAME_FEATURE_DIM)) / std.reshape(1, 1, FRAME_FEATURE_DIM)
-
-    X_train = X[train_idx]
-    if args.augment:
-        aug_rng = np.random.default_rng(args.seed + 1)
-        X_train = _augment_sequence(X_train, aug_rng)
+    # Normalisation is applied per-batch inside LandmarkDataGenerator;
+    # we intentionally do NOT globalise-normalize X here to avoid a
+    # full second copy of the data in memory.
 
     num_classes = len(label_map)
     class_counts = np.bincount(y[train_idx], minlength=num_classes).astype(np.float32)
@@ -418,6 +636,7 @@ def main() -> None:
         "epochs": args.epochs,
         "batch_size": args.batch_size,
         "max_classes": args.max_classes,
+        "exact_classes": args.exact_classes,
         "min_samples_per_class": args.min_samples_per_class,
         "lr": args.lr,
         "dropout": args.dropout,
@@ -425,6 +644,7 @@ def main() -> None:
         "arch": args.arch,
         "split_mode": args.split_mode,
         "augment": args.augment,
+        "drive_checkpoint": args.drive_checkpoint,
         "sequence_length": sequence_length,
         "feature_dim": FRAME_FEATURE_DIM,
         "tensorflow_version": tf.__version__,
@@ -453,6 +673,30 @@ def main() -> None:
         ),
     ]
 
+    # ── Optional Google Drive checkpoint ─────────────────────────────────────
+    # When --drive-checkpoint points to a mounted Drive directory, an additional
+    # ModelCheckpoint writes gesture_model_best.h5 there so the best weights
+    # survive a Colab runtime preemption or idle disconnect.
+    if args.drive_checkpoint:
+        drive_dir = Path(args.drive_checkpoint)
+        if drive_dir.is_dir():
+            drive_model_path = drive_dir / "gesture_model_best.h5"
+            callbacks.append(
+                keras.callbacks.ModelCheckpoint(
+                    str(drive_model_path),
+                    monitor="val_accuracy",
+                    save_best_only=True,
+                    verbose=1,
+                )
+            )
+            print(f"Drive checkpoint  : {drive_model_path}")
+        else:
+            print(
+                f"WARNING: --drive-checkpoint '{drive_dir}' does not exist or is not a "
+                "directory — Drive backup disabled.  Mount Google Drive first with: "
+                "from google.colab import drive; drive.mount('/content/drive')"
+            )
+
     print("\n" + "=" * 64)
     print("SignConnect - Temporal Landmark Training")
     print("=" * 64)
@@ -460,17 +704,42 @@ def main() -> None:
     print(f"Dataset         : {dataset_path}")
     print(f"Architecture    : {args.arch}")
     print(f"Split mode      : {args.split_mode}")
+    print(f"Augmentation    : {args.augment}")
     print(f"Samples/classes : {len(X)} / {num_classes}")
     print(f"Input shape     : ({sequence_length}, {FRAME_FEATURE_DIM})")
     print(f"Split           : train={len(train_idx)} val={len(val_idx)} test={len(test_idx)}")
     print(f"Signer overlap  : train/val={overlap_report['train_val_overlap']} train/test={overlap_report['train_test_overlap']}")
 
-    history = model.fit(
-        X_train,
-        y[train_idx],
-        validation_data=(X[val_idx], y[val_idx]),
-        epochs=args.epochs,
+    # ── Build Keras Sequence generators ──────────────────────────────────────
+    # Generators apply normalisation (and optional augmentation) per batch,
+    # keeping memory usage flat regardless of augmentation multiplier.
+    train_gen = LandmarkDataGenerator(
+        X_canonical=X,
+        y=y,
+        indices=train_idx,
+        mean=mean,
+        std=std,
         batch_size=args.batch_size,
+        augment=args.augment,
+        seed=args.seed + 1,
+        shuffle=True,
+    )
+    val_gen = LandmarkDataGenerator(
+        X_canonical=X,
+        y=y,
+        indices=val_idx,
+        mean=mean,
+        std=std,
+        batch_size=args.batch_size,
+        augment=False,
+        seed=args.seed,
+        shuffle=False,
+    )
+
+    history = model.fit(
+        train_gen,
+        validation_data=val_gen,
+        epochs=args.epochs,
         class_weight=class_weight,
         callbacks=callbacks,
         verbose=1,
@@ -479,14 +748,28 @@ def main() -> None:
     best_val_accuracy = float(max(history.history.get("val_accuracy", [0.0])))
     actual_epochs = len(history.history.get("val_accuracy", []))
     eval_indices = test_idx if len(test_idx) else val_idx
-    probabilities = model.predict(X[eval_indices], verbose=0)
-    predictions = np.argmax(probabilities, axis=1)
-    top1 = float(np.mean(predictions == y[eval_indices]))
-    top5 = _top_k_accuracy(y[eval_indices], probabilities, k=min(5, num_classes))
-    macro_f1 = _macro_f1(y[eval_indices], predictions, num_classes)
 
-    _write_confusion(CONFUSION_OUT, y[eval_indices], predictions, label_map)
-    _write_per_class_metrics(PER_CLASS_METRICS_OUT, y[eval_indices], predictions, label_map)
+    # Build a non-shuffling generator for deterministic ordered predictions.
+    eval_gen = LandmarkDataGenerator(
+        X_canonical=X,
+        y=y,
+        indices=eval_indices,
+        mean=mean,
+        std=std,
+        batch_size=args.batch_size,
+        augment=False,
+        seed=args.seed,
+        shuffle=False,
+    )
+    probabilities = model.predict(eval_gen, verbose=0)
+    predictions = np.argmax(probabilities, axis=1)
+    y_eval = y[eval_indices]
+    top1 = float(np.mean(predictions == y_eval))
+    top5 = _top_k_accuracy(y_eval, probabilities, k=min(5, num_classes))
+    macro_f1 = _macro_f1(y_eval, predictions, num_classes)
+
+    _write_confusion(CONFUSION_OUT, y_eval, predictions, label_map)
+    _write_per_class_metrics(PER_CLASS_METRICS_OUT, y_eval, predictions, label_map)
 
     demo_marker = MODEL_OUT.with_suffix(".demo")
     if demo_marker.exists():

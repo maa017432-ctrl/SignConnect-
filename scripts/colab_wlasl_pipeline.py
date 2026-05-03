@@ -122,14 +122,15 @@ def _export_artifacts(run_id: str) -> Path:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--tier", type=int, default=300, help="Number of WLASL classes to train (default: 300)")
+    parser.add_argument("--tier", type=int, default=50, help="Number of WLASL classes to train (default: 50)")
     parser.add_argument("--wlasl-dir", type=Path, default=WLASL_DIR, help="Path to WLASL directory with info.json and videos/")
     parser.add_argument("--sequences-dir", type=Path, default=SEQUENCES_DIR, help="Directory to store/resume extracted sequences")
-    parser.add_argument("--epochs", type=int, default=80, help="Training epochs (default: 80)")
+    parser.add_argument("--epochs", type=int, default=150, help="Training epochs (default: 150)")
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size (reduce if OOM; default: 32)")
-    parser.add_argument("--arch", choices=["bigru", "bigru_attention"], default="bigru", help="Model architecture")
+    parser.add_argument("--arch", choices=["bigru", "bigru_attention"], default="bigru_attention", help="Model architecture")
     parser.add_argument("--split-mode", choices=["official", "signer-grouped", "random-stratified"], default="official")
-    parser.add_argument("--augment", action="store_true", help="Apply training augmentation")
+    parser.add_argument("--exact-classes", type=int, default=0, metavar="N", help="Subset to exactly N classes after tier filter (e.g. 31 to match app config)")
+    parser.add_argument("--drive-checkpoint", type=str, default="", metavar="DIR", help="Google Drive directory for backup ModelCheckpoint (e.g. /content/drive/MyDrive/)")
     parser.add_argument("--mixed-precision", action="store_true", help="Enable float16 mixed precision for GPU")
     parser.add_argument("--force-extract", action="store_true", help="Re-extract sequences even if NPZ exists")
     parser.add_argument("--skip-extract", action="store_true", help="Skip extraction and go straight to training")
@@ -202,9 +203,12 @@ def main() -> None:
             "--batch-size", str(args.batch_size),
             "--arch", args.arch,
             "--split-mode", args.split_mode,
+            "--augment",  # landmark augmentation is always enabled in the Colab pipeline
         ]
-        if args.augment:
-            train_cmd.append("--augment")
+        if args.exact_classes:
+            train_cmd += ["--exact-classes", str(args.exact_classes)]
+        if args.drive_checkpoint:
+            train_cmd += ["--drive-checkpoint", str(args.drive_checkpoint)]
         _run(train_cmd)
 
     # ── Artifact export ───────────────────────────────────────────────────────
