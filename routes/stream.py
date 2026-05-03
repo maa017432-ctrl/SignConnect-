@@ -200,6 +200,7 @@ def _generate_frames(app: Any) -> Iterator[bytes]:
                 time.sleep(0.2)
 
         while True:
+            frame_start = time.perf_counter()
             frame = camera_manager.get_frame()
             if frame is None or cv2 is None:
                 yield _mjpeg_chunk(_placeholder_frame("Waiting for Camera"))
@@ -212,7 +213,8 @@ def _generate_frames(app: Any) -> Iterator[bytes]:
                 time.sleep(0.05)
                 continue
             yield _mjpeg_chunk(jpeg)
-            time.sleep(1.0 / _TARGET_FPS)
+            elapsed = time.perf_counter() - frame_start
+            time.sleep(max(0.0, 1.0 / _TARGET_FPS - elapsed))
 
 
 def camera_frame_response() -> Response:

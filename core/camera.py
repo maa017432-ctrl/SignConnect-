@@ -172,17 +172,30 @@ class CameraManager:
         with self._lock:
             return self._running and self._capture is not None
 
+    @property
     def is_available(self) -> bool:
         """True if capture is running, or a quick probe shows hardware is usable."""
         with self._lock:
             if self._running and self._capture is not None:
                 return True
-        now = time.time()
-        if (
-            self._hw_probe_cache is not None
-            and (now - self._hw_probe_time) < self._hw_probe_ttl_seconds
-        ):
-            return self._hw_probe_cache
-        self._hw_probe_cache = self._probe_hardware_available()
-        self._hw_probe_time = now
-        return self._hw_probe_cache
+            now = time.time()
+            if (
+                self._hw_probe_cache is not None
+                and (now - self._hw_probe_time) < self._hw_probe_ttl_seconds
+            ):
+                return self._hw_probe_cache
+        # Run the probe outside the lock to avoid blocking other threads during the
+        # potentially slow camera open/close cycle.
+        result = self._probe_hardware_available()
+        with self._lock:
+            # Only update the cache if it hasn't been refreshed by another thread
+            # while we were probing.
+            if (
+                self._hw_probe_cache is None
+                or (time.time() - self._hw_probe_time) >= self._hw_probe_ttl_seconds
+            ):
+                self._hw_probe_cache = result
+                self._hw_probe_time = time.time()
+            else:
+                result = self._hw_probe_cache
+        return result

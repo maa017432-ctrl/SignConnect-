@@ -156,7 +156,6 @@
 
 <!-- Hidden elements for JS compatibility -->
 <div id="hidden-elements" style="display:none">
-  <button id="pause-btn" type="button">Pause</button>
   <button id="delete-word-btn" type="button">Undo</button>
   <button id="practice-btn" type="button">Learn</button>
   <button id="settings-btn" type="button">Settings</button>
@@ -167,13 +166,18 @@
   <button id="settings-save-btn" class="btn btn-primary" type="button">Save</button>
   <div id="topk-panel" class="hidden"></div>
   <ul id="topk-list"></ul>
-  <div id="practice-panel" class="hidden"></div>
-  <button id="practice-close-btn" type="button">✕</button>
-  <input id="practice-search-input" type="text" />
-  <div id="practice-list"></div>
-  <div id="practice-visualizer" class="hidden"></div>
-  <button id="practice-back-btn" type="button">Back</button>
-  <canvas id="gesture-canvas" width="280" height="360"></canvas>
+  <div id="practice-panel" class="hidden">
+    <button id="practice-close-btn" type="button">✕</button>
+    <input id="practice-search-input" type="text" placeholder="Search gestures…" />
+    <div id="practice-list"></div>
+    <div id="practice-visualizer" class="hidden">
+      <button id="practice-back-btn" type="button">Back</button>
+      <span id="visualizer-title"></span>
+      <span id="visualizer-description"></span>
+      <span id="visualizer-difficulty"></span>
+      <canvas id="gesture-canvas" width="280" height="360"></canvas>
+    </div>
+  </div>
   <div id="history-list"></div>
   <button id="refresh-history-btn" type="button">Refresh</button>
   <button id="clear-history-btn" type="button">Clear</button>
@@ -190,5 +194,13 @@
   <div id="commit-progress"></div>
   <div id="progress-hint"></div>
   <span id="confidence-badge"></span>
+</div>
+
+<!-- Coaching overlay (hidden until coaching system activates) -->
+<div id="coaching-container" class="hidden" aria-live="polite" style="display:none">
+  <div id="coaching-message">
+    <span id="coaching-icon"></span>
+    <span id="coaching-text"></span>
+  </div>
 </div>
 {% endblock %}
