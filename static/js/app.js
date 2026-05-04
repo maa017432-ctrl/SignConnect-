@@ -85,6 +85,9 @@
 
   let streamTimer = null;
   let predictionTimer = null; // set only when socket.io unavailable
+  let checkVideoTimer = null; // MJPEG stream readiness probe
+  let statusPollTimer = null;
+  let fpsPollTimer = null;
   let paused = true;
   let frameInFlight = false;
   let blobUrl = null;
@@ -1310,7 +1313,7 @@
       data.forEach((item) => {
         const tr = document.createElement("tr");
         const audio = item.audio_file
-          ? `<audio src="/static/audio/${item.audio_file}" controls preload="none"></audio>`
+          ? `<audio src="/static/audio/${escHtml(item.audio_file)}" controls preload="none"></audio>`
           : "—";
         tr.innerHTML = `
           <td>${escHtml(item.gesture_label)}</td>
@@ -1387,14 +1390,18 @@
       };
 
       // Fallback: Some browsers (Chrome) don't fire onload for MJPEG streams
-      const checkVideo = setInterval(() => {
+      // Clear any previous probe timer before creating a new one.
+      if (checkVideoTimer) { clearInterval(checkVideoTimer); checkVideoTimer = null; }
+      checkVideoTimer = setInterval(() => {
         if (paused || !video) {
-          clearInterval(checkVideo);
+          clearInterval(checkVideoTimer);
+          checkVideoTimer = null;
           return;
         }
         if (video.naturalWidth > 1) { // >1 ensures it's not a 1x1 placeholder frame
           hideOverlay();
-          clearInterval(checkVideo);
+          clearInterval(checkVideoTimer);
+          checkVideoTimer = null;
         }
       }, 500);
     }
@@ -1438,6 +1445,7 @@
     paused = true;
     if (streamTimer) { clearInterval(streamTimer); streamTimer = null; }
     if (predictionTimer) { clearInterval(predictionTimer); predictionTimer = null; }
+    if (checkVideoTimer) { clearInterval(checkVideoTimer); checkVideoTimer = null; }
     if (video) video.removeAttribute("src");
     if (blobUrl) { URL.revokeObjectURL(blobUrl); blobUrl = null; }
     prevFrameAt = 0;
@@ -1545,8 +1553,8 @@
 
   /* All pages — status poll only on translator where it's useful */
   if (video) {
-    setInterval(pollStatus, STATUS_MS);
+    statusPollTimer = setInterval(pollStatus, STATUS_MS);
     pollStatus();
   }
-  setInterval(updateFpsDisplay, 1000);
+  fpsPollTimer = setInterval(updateFpsDisplay, 1000);
 })();

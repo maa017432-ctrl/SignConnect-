@@ -35,4 +35,11 @@ def init_db(database_path: str, schema_path: str) -> None:
     with get_connection(str(db_path)) as connection:
         script = schema.read_text(encoding="utf-8")
         connection.executescript(script)
+        # Migration: add user_id column to translations if it doesn't exist yet
+        try:
+            connection.execute(
+                "ALTER TABLE translations ADD COLUMN user_id INTEGER REFERENCES users(id)"
+            )
+        except sqlite3.OperationalError:
+            pass  # Column already present — nothing to do
     LOGGER.info("Database initialized at %s", db_path)

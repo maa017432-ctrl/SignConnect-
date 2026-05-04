@@ -6,7 +6,7 @@ import json
 import logging
 from pathlib import Path
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, jsonify, request, session
 from flask.wrappers import Response
 
 from database.db import get_connection
@@ -152,10 +152,10 @@ def translate() -> tuple[dict[str, str | int], int]:
                 session_id = row["id"]
             connection.execute(
                 """
-                INSERT INTO translations (session_id, gesture_label, confidence, audio_file)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO translations (session_id, user_id, gesture_label, confidence, audio_file)
+                VALUES (?, ?, ?, ?, ?)
                 """,
-                (session_id, text, confidence, filename),
+                (session_id, session.get("user_id"), text, confidence, filename),
             )
     except Exception:
         LOGGER.exception("Failed to persist translation to database")
@@ -166,14 +166,17 @@ def translate() -> tuple[dict[str, str | int], int]:
 @api_bp.get("/api/history")
 def get_history() -> tuple[list[dict[str, str | float | None]], int]:
     """Return latest translation history as JSON list."""
+    user_id = session.get("user_id")
     with get_connection(current_app.config["DATABASE_PATH"]) as connection:
         rows = connection.execute(
             """
             SELECT id, gesture_label, confidence, audio_file, created_at
             FROM translations
+            WHERE user_id IS ?
             ORDER BY id DESC
             LIMIT 50
-            """
+            """,
+            (user_id,),
         ).fetchall()
 
     payload = [
@@ -217,11 +220,12 @@ def update_config() -> tuple[dict[str, float | str], int]:
 
 @api_bp.delete("/api/history")
 def clear_history() -> tuple[dict[str, str], int]:
-    """Delete all translation rows from the database."""
+    """Delete all translation rows belonging to the current user."""
     if not _api_key_ok():
         return jsonify({"error": "Unauthorized", "code": 401}), 401
+    user_id = session.get("user_id")
     with get_connection(current_app.config["DATABASE_PATH"]) as connection:
-        connection.execute("DELETE FROM translations")
+        connection.execute("DELETE FROM translations WHERE user_id IS ?", (user_id,))
     return jsonify({"status": "cleared"}), 200
 
 
