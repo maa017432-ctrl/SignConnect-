@@ -96,6 +96,8 @@
 
   /* ── WebSocket (socket.io) — push-based predictions ─────────── */
   let socketConnected = false;
+  let _socket = null; // module-level ref so visibilitychange can reach it
+  let _visibilityListenerAttached = false; // guard against duplicate registration
 
   /* ── User Coaching System ──────────────────────────────────── */
   const COACHING_CONFIG = {
@@ -828,11 +830,14 @@
       startPredictionPoll();
       return;
     }
-    const socket = io({
-      reconnectionAttempts: 5,
+    _socket = io({
+      reconnectionAttempts: Infinity,  // never give up — retries survive lid-open
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 30000,     // cap exponential backoff at 30 s
       timeout: 4000,
       transports: ["websocket", "polling"],
     });
+    const socket = _socket;
 
     socket.on("connect", () => {
       socketConnected = true;
@@ -852,6 +857,28 @@
     socket.on("prediction", (data) => {
       updatePredictionUI(data);
     });
+
+    // ── Lid-open / tab-focus recovery ────────────────────────────
+    // When the OS suspends the network stack (lid close, sleep), both the
+    // WebSocket TCP connection and the MJPEG <img> HTTP stream stall silently.
+    // visibilitychange fires the moment JS resumes after wake-up, giving us
+    // the earliest possible hook to force reconnection of both channels.
+    // Guard ensures only one listener is ever registered, even if initSocket()
+    // were called more than once.
+    if (!_visibilityListenerAttached) {
+      _visibilityListenerAttached = true;
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState !== "visible") return;
+        // Force MJPEG stream reconnect — a stalled <img> never self-recovers
+        if (!paused && video && video.src) {
+          video.src = mjpegUrl() + "?_=" + Date.now();
+        }
+        // Force socket reconnect if it drifted offline while the tab was hidden
+        if (_socket && !_socket.connected) {
+          _socket.connect();
+        }
+      });
+    }
 
     // Keep polling as a reliable fallback. Waitress can serve the app, but
     // SocketIO push may be unavailable depending on the local server path.
