@@ -495,7 +495,7 @@
           <span class="gesture-item-name">${escHtml(gesture.name)}</span>
           <span class="gesture-item-desc">${escHtml(gesture.description)}</span>
         </div>
-        <span class="gesture-item-difficulty ${escHtml(gesture.difficulty)}">${escHtml(gesture.difficulty)}</span>
+        <span class="gesture-item-difficulty ${safeClass(gesture.difficulty)}">${escHtml(gesture.difficulty)}</span>
       `;
 
       item.addEventListener("click", () => {
@@ -1336,6 +1336,11 @@
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
+  }
+
+  /** Strip non-word characters so a value is safe as a CSS class name. */
+  function safeClass(str) {
+    return String(str).replace(/[^a-zA-Z0-9_-]/g, "");
   }
 
   /* ── Camera frame polling ─────────────────────────────────── */
