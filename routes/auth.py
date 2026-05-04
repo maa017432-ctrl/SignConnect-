@@ -41,14 +41,11 @@ def _create_user(db_path: str, email: str, password: str, full_name: str) -> int
     """Insert a new user and return their id."""
     pw_hash = generate_password_hash(password)
     with get_connection(db_path) as conn:
-        conn.execute(
+        cursor = conn.execute(
             "INSERT INTO users (email, password_hash, full_name) VALUES (?, ?, ?)",
             (email.lower().strip(), pw_hash, full_name.strip()),
         )
-        row = conn.execute(
-            "SELECT id FROM users WHERE email = ?", (email.lower().strip(),)
-        ).fetchone()
-    return row["id"]
+    return cursor.lastrowid
 
 
 # ── routes ────────────────────────────────────────────────────────────────────

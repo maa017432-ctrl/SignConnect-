@@ -3,7 +3,7 @@ __pycache__/
 *.pyc
 *.zip
 .vscode/
-data/
+/data/
 # Security
 .env
 

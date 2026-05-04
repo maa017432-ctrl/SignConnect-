@@ -424,6 +424,7 @@
   }
 
   function resetSessionStats() {
+    const timerToCancel = sessionStats.durationTimer;
     sessionStats = {
       totalGestures: 0,
       confidenceScores: [],
@@ -443,7 +444,7 @@
     if (statBest) statBest.textContent = "—";
     if (statCommon) statCommon.textContent = "—";
 
-    if (sessionStats.durationTimer) clearInterval(sessionStats.durationTimer);
+    if (timerToCancel) clearInterval(timerToCancel);
   }
 
   /* ── Practice Mode / Gesture Learning System ────────────────── */
