@@ -16,6 +16,7 @@
   const modelStatus = document.getElementById("model-status");
   const modelDot = document.getElementById("model-dot");
   const fpsStatus = document.getElementById("fps-status") || document.getElementById("fps-display");
+  const liveBadge = document.getElementById("sc-live-badge");
   const startBtn = document.getElementById("start-btn");
   const pauseBtn = document.getElementById("pause-btn");
   const clearBtn = document.getElementById("clear-btn");
@@ -79,8 +80,14 @@
   const STATUS_MS = 4000;
   const PREDICT_MS = 300;   // HTTP fallback prediction poll interval
 
+  const ICON_PAUSE = '<svg viewBox="0 0 24 24" fill="currentColor" class="sc-btn-icon" style="width:14px;height:14px"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
+  const ICON_PLAY  = '<svg viewBox="0 0 24 24" fill="currentColor" class="sc-btn-icon" style="width:14px;height:14px"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+
   let streamTimer = null;
   let predictionTimer = null; // set only when socket.io unavailable
+  let checkVideoTimer = null; // MJPEG stream readiness probe
+  let statusPollTimer = null;
+  let fpsPollTimer = null;
   let paused = true;
   let frameInFlight = false;
   let blobUrl = null;
@@ -89,6 +96,8 @@
 
   /* ── WebSocket (socket.io) — push-based predictions ─────────── */
   let socketConnected = false;
+  let _socket = null; // module-level ref so visibilitychange can reach it
+  let _visibilityListenerAttached = false; // guard against duplicate registration
 
   /* ── User Coaching System ──────────────────────────────────── */
   const COACHING_CONFIG = {
@@ -346,9 +355,6 @@
 
     // Track gesture
     sessionStats.totalGestures++;
-    if (sessionStats.confidenceScores.length >= 1000) {
-      sessionStats.confidenceScores.shift();
-    }
     sessionStats.confidenceScores.push(confidence);
 
     // Track gesture frequency
@@ -423,9 +429,7 @@
   }
 
   function resetSessionStats() {
-    const oldTimer = sessionStats.durationTimer;
-    if (oldTimer) clearInterval(oldTimer);
-
+    const timerToCancel = sessionStats.durationTimer;
     sessionStats = {
       totalGestures: 0,
       confidenceScores: [],
@@ -444,6 +448,8 @@
     if (statDuration) statDuration.textContent = "0s";
     if (statBest) statBest.textContent = "—";
     if (statCommon) statCommon.textContent = "—";
+
+    if (timerToCancel) clearInterval(timerToCancel);
   }
 
   /* ── Practice Mode / Gesture Learning System ────────────────── */
@@ -488,10 +494,10 @@
       item.className = "gesture-item";
       item.innerHTML = `
         <div class="gesture-item-left">
-          <span class="gesture-item-name">${gesture.name}</span>
-          <span class="gesture-item-desc">${gesture.description}</span>
+          <span class="gesture-item-name">${escHtml(gesture.name)}</span>
+          <span class="gesture-item-desc">${escHtml(gesture.description)}</span>
         </div>
-        <span class="gesture-item-difficulty ${gesture.difficulty}">${gesture.difficulty}</span>
+        <span class="gesture-item-difficulty ${safeClass(gesture.difficulty)}">${escHtml(gesture.difficulty)}</span>
       `;
 
       item.addEventListener("click", () => {
@@ -796,6 +802,7 @@
    * Toggle settings modal
    */
   function toggleSettingsModal() {
+    if (!settingsModal) return;
     if (settingsModal.classList.contains("hidden")) {
       settingsModal.classList.remove("hidden");
       loadSettingsUI();
@@ -815,7 +822,7 @@
    * Close settings modal
    */
   function closeSettingsModal() {
-    settingsModal.classList.add("hidden");
+    if (settingsModal) settingsModal.classList.add("hidden");
   }
 
   function initSocket() {
@@ -823,19 +830,17 @@
       startPredictionPoll();
       return;
     }
-    const socket = io({
-      reconnectionAttempts: 5,
+    _socket = io({
+      reconnectionAttempts: Infinity,  // never give up — retries survive lid-open
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 30000,     // cap exponential backoff at 30 s
       timeout: 4000,
       transports: ["websocket", "polling"],
     });
+    const socket = _socket;
 
     socket.on("connect", () => {
       socketConnected = true;
-      // Stop HTTP fallback poll now that WebSocket is up.
-      if (predictionTimer) {
-        clearInterval(predictionTimer);
-        predictionTimer = null;
-      }
       LOGGER("WebSocket connected");
     });
 
@@ -853,8 +858,30 @@
       updatePredictionUI(data);
     });
 
-    // Start HTTP polling now as a reliable fallback; the connect handler will
-    // stop it once the WebSocket handshake succeeds.
+    // ── Lid-open / tab-focus recovery ────────────────────────────
+    // When the OS suspends the network stack (lid close, sleep), both the
+    // WebSocket TCP connection and the MJPEG <img> HTTP stream stall silently.
+    // visibilitychange fires the moment JS resumes after wake-up, giving us
+    // the earliest possible hook to force reconnection of both channels.
+    // Guard ensures only one listener is ever registered, even if initSocket()
+    // were called more than once.
+    if (!_visibilityListenerAttached) {
+      _visibilityListenerAttached = true;
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState !== "visible") return;
+        // Force MJPEG stream reconnect — a stalled <img> never self-recovers
+        if (!paused && video && video.src) {
+          video.src = mjpegUrl() + "?_=" + Date.now();
+        }
+        // Force socket reconnect if it drifted offline while the tab was hidden
+        if (_socket && !_socket.connected) {
+          _socket.connect();
+        }
+      });
+    }
+
+    // Keep polling as a reliable fallback. Waitress can serve the app, but
+    // SocketIO push may be unavailable depending on the local server path.
     startPredictionPoll();
   }
 
@@ -978,15 +1005,16 @@
   function updateFpsDisplay() {
     if (!fpsStatus) return;
     if (paused || fpsWindow.length === 0) {
-      fpsStatus.textContent = "FPS: —";
+      fpsStatus.textContent = "—";
       return;
     }
     const avg = fpsWindow.reduce((a, b) => a + b, 0) / fpsWindow.length;
-    fpsStatus.textContent = `FPS: ${Math.min(60, Math.max(1, Math.round(1000 / Math.max(16, avg))))}`;
+    fpsStatus.textContent = `${Math.min(60, Math.max(1, Math.round(1000 / Math.max(16, avg))))}`;
   }
 
   /* ── Shared prediction UI updater (called by socket OR poll) ── */
   function updatePredictionUI(data) {
+    if (paused) return;
     const display = data.smoothed_label || data.label;
     if (recognizedText) recognizedText.textContent = display || "—";
     updateConfidence(display ? data.confidence : 0);
@@ -1313,7 +1341,7 @@
       data.forEach((item) => {
         const tr = document.createElement("tr");
         const audio = item.audio_file
-          ? `<audio src="/static/audio/${item.audio_file}" controls preload="none"></audio>`
+          ? `<audio src="/static/audio/${escHtml(item.audio_file)}" controls preload="none"></audio>`
           : "—";
         tr.innerHTML = `
           <td>${escHtml(item.gesture_label)}</td>
@@ -1335,6 +1363,11 @@
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
+  }
+
+  /** Strip non-word characters so a value is safe as a CSS class name. */
+  function safeClass(str) {
+    return String(str).replace(/[^a-zA-Z0-9_-]/g, "");
   }
 
   /* ── Camera frame polling ─────────────────────────────────── */
@@ -1390,23 +1423,32 @@
       };
 
       // Fallback: Some browsers (Chrome) don't fire onload for MJPEG streams
-      const checkVideo = setInterval(() => {
+      // Clear any previous probe timer before creating a new one.
+      if (checkVideoTimer) { clearInterval(checkVideoTimer); checkVideoTimer = null; }
+      checkVideoTimer = setInterval(() => {
         if (paused || !video) {
-          clearInterval(checkVideo);
+          clearInterval(checkVideoTimer);
+          checkVideoTimer = null;
           return;
         }
         if (video.naturalWidth > 1) { // >1 ensures it's not a 1x1 placeholder frame
           hideOverlay();
-          clearInterval(checkVideo);
+          clearInterval(checkVideoTimer);
+          checkVideoTimer = null;
         }
       }, 500);
     }
 
     showOverlay("Connecting to camera…");
     if (startBtn) startBtn.disabled = true;
-    if (pauseBtn) pauseBtn.disabled = false;
+    if (pauseBtn) {
+      pauseBtn.disabled = false;
+      pauseBtn.innerHTML = ICON_PAUSE + ' Pause';
+    }
+    if (liveBadge) liveBadge.style.display = "";
     setDot(cameraDot, "pulsing");
     startSessionTimer();
+    startPredictionPoll();
 
     // ── Camera connection timeout (30 s) ──
     setTimeout(() => {
@@ -1435,13 +1477,19 @@
   function pauseStream() {
     paused = true;
     if (streamTimer) { clearInterval(streamTimer); streamTimer = null; }
+    if (predictionTimer) { clearInterval(predictionTimer); predictionTimer = null; }
+    if (checkVideoTimer) { clearInterval(checkVideoTimer); checkVideoTimer = null; }
     if (video) video.removeAttribute("src");
     if (blobUrl) { URL.revokeObjectURL(blobUrl); blobUrl = null; }
     prevFrameAt = 0;
     fpsWindow = [];
     showOverlay("Stream paused");
     if (startBtn) startBtn.disabled = false;
-    if (pauseBtn) pauseBtn.disabled = true;
+    if (pauseBtn) {
+      pauseBtn.disabled = false;
+      pauseBtn.innerHTML = ICON_PLAY + ' Resume';
+    }
+    if (liveBadge) liveBadge.style.display = "none";
     updateFpsDisplay();
     resetCoachingState();
     if (sessionStats.durationTimer) clearInterval(sessionStats.durationTimer);
@@ -1451,8 +1499,7 @@
   function bindButtons() {
     if (startBtn) startBtn.addEventListener("click", startStream);
     if (pauseBtn) {
-      pauseBtn.addEventListener("click", pauseStream);
-      pauseBtn.disabled = true;
+      pauseBtn.addEventListener("click", () => paused ? startStream() : pauseStream());
     }
     if (speakBtn) speakBtn.addEventListener("click", speakText);
     if (copyBtn) copyBtn.addEventListener("click", copySentence);
@@ -1539,8 +1586,8 @@
 
   /* All pages — status poll only on translator where it's useful */
   if (video) {
-    setInterval(pollStatus, STATUS_MS);
+    statusPollTimer = setInterval(pollStatus, STATUS_MS);
     pollStatus();
   }
-  setInterval(updateFpsDisplay, 1000);
+  fpsPollTimer = setInterval(updateFpsDisplay, 1000);
 })();

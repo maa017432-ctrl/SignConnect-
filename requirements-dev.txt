@@ -1,3 +1,2 @@
-# Development/test-only dependencies — not required for production deployment.
--r requirements.txt
+# Development-only dependencies (not required for running the application)
 pytest>=8.0.0

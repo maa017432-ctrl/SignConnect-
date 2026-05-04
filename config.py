@@ -2,8 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 import os
+import sys
 from pathlib import Path
+
+# NullHandler so this logger is a no-op until the application configures
+# logging (e.g. in create_app).  Fatal startup messages are emitted via
+# logging.critical() which always reaches the root logger regardless.
+_CONFIG_LOGGER = logging.getLogger(__name__)
+_CONFIG_LOGGER.addHandler(logging.NullHandler())
 
 from model_contract import (
     DEFAULT_MODEL_TYPE,
@@ -26,12 +34,13 @@ class Config:
         self.SESSION_COOKIE_SAMESITE = "Lax"
         self.SESSION_COOKIE_SECURE = not self.DEBUG
 
-        # ── Security: fail hard if running in production with the default key ──
+        # ── Security: crash hard if running in production with the default key ──
         if not self.DEBUG and self.SECRET_KEY == _DEFAULT_SECRET:
-            raise RuntimeError(
-                "\n[FATAL] SECRET_KEY is set to the insecure default value.\n"
-                "Set a strong SECRET_KEY in your .env file before running in production.\n"
+            _CONFIG_LOGGER.critical(
+                "SECRET_KEY is set to the insecure default value. "
+                "Set a strong SECRET_KEY in your .env file before running in production."
             )
+            sys.exit(1)
 
         self.HOST = os.getenv("HOST", "0.0.0.0")
         self.PORT = int(os.getenv("PORT", "5000"))
@@ -54,28 +63,30 @@ class Config:
         # Leave blank in dev to skip the check; set in production .env
         self.API_KEY = os.getenv("API_KEY", "")
         if not self.DEBUG and not self.API_KEY:
-            raise RuntimeError(
-                "\n[FATAL] API_KEY is required for production admin endpoints.\n"
-                "Set API_KEY in your .env file before running in production.\n"
+            _CONFIG_LOGGER.critical(
+                "API_KEY is required for production admin endpoints. "
+                "Set API_KEY in your .env file before running in production."
             )
+            sys.exit(1)
 
         self.CAMERA_INDEX = int(os.getenv("CAMERA_INDEX", "0"))
         self.MODEL_INPUT_DIM = int(os.getenv("MODEL_INPUT_DIM", str(MODEL_INPUT_DIM)))
         if self.MODEL_INPUT_DIM != MODEL_INPUT_DIM:
-            raise RuntimeError(
-                f"\n[FATAL] MODEL_INPUT_DIM must be {MODEL_INPUT_DIM} for the "
-                "current MediaPipe landmark pipeline.\n"
+            _CONFIG_LOGGER.critical(
+                "MODEL_INPUT_DIM must be %d for the current MediaPipe landmark pipeline.",
+                MODEL_INPUT_DIM,
             )
+            sys.exit(1)
         self.MODEL_TYPE = os.getenv("MODEL_TYPE", DEFAULT_MODEL_TYPE).strip().lower()
         if self.MODEL_TYPE not in SUPPORTED_MODEL_TYPES:
-            raise RuntimeError(
-                f"\n[FATAL] MODEL_TYPE must be one of {SUPPORTED_MODEL_TYPES}.\n"
+            _CONFIG_LOGGER.critical(
+                "MODEL_TYPE must be one of %s.", SUPPORTED_MODEL_TYPES
             )
+            sys.exit(1)
         self.SEQUENCE_LENGTH = int(os.getenv("SEQUENCE_LENGTH", str(SEQUENCE_LENGTH)))
         if self.SEQUENCE_LENGTH <= 0:
-            raise RuntimeError(
-                "\n[FATAL] SEQUENCE_LENGTH must be a positive integer.\n"
-            )
+            _CONFIG_LOGGER.critical("SEQUENCE_LENGTH must be a positive integer.")
+            sys.exit(1)
         self.PREDICTION_CONFIDENCE_THRESHOLD = float(
             os.getenv("PREDICTION_CONFIDENCE_THRESHOLD", "0.75")
         )

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 from io import BytesIO
@@ -24,6 +25,7 @@ LOGGER = logging.getLogger(__name__)
 stream_bp = Blueprint("stream", __name__)
 
 _CAMERA_RETRY_INTERVAL_S = 5.0
+_JPEG_QUALITY = max(0, min(100, int(os.environ.get("MJPEG_JPEG_QUALITY", "75"))))  # clamped 0-100
 _TARGET_FPS = 30
 _prediction_lock = threading.Lock()
 
@@ -151,7 +153,15 @@ def _annotate_and_encode_jpeg(app: Any, frame: np.ndarray) -> bytes | None:
 
         _emit_prediction(app, prediction_payload)
 
-        ok, encoded = cv2.imencode(".jpg", annotated)
+        if inference_ms is not None:
+            LOGGER.debug(
+                "inference_ms=%.1f label=%s confidence=%.3f",
+                inference_ms, raw_label, raw_confidence,
+            )
+
+        ok, encoded = cv2.imencode(
+            ".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, _JPEG_QUALITY]
+        )
         if not ok:
             return None
         return encoded.tobytes()
@@ -200,7 +210,6 @@ def _generate_frames(app: Any) -> Iterator[bytes]:
                 time.sleep(0.2)
 
         while True:
-            frame_start = time.perf_counter()
             frame = camera_manager.get_frame()
             if frame is None or cv2 is None:
                 yield _mjpeg_chunk(_placeholder_frame("Waiting for Camera"))
@@ -213,8 +222,7 @@ def _generate_frames(app: Any) -> Iterator[bytes]:
                 time.sleep(0.05)
                 continue
             yield _mjpeg_chunk(jpeg)
-            elapsed = time.perf_counter() - frame_start
-            time.sleep(max(0.0, 1.0 / _TARGET_FPS - elapsed))
+            time.sleep(1.0 / _TARGET_FPS)
 
 
 def camera_frame_response() -> Response:

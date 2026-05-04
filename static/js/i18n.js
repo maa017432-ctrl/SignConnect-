@@ -77,12 +77,10 @@ const i18n = (function () {
             const key = element.getAttribute("data-i18n");
             const text = t(key);
 
-            if (element.tagName === "INPUT" && element.type === "button" || element.type === "submit") {
+            if (element.tagName === "INPUT" && (element.type === "button" || element.type === "submit")) {
                 element.value = text;
             } else if (element.tagName === "IMG") {
                 element.alt = text;
-            } else if (element.tagName === "INPUT" && element.type === "placeholder") {
-                element.placeholder = text;
             } else {
                 element.textContent = text;
             }

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 import threading
 import time
 from typing import Any, Optional
@@ -27,6 +28,7 @@ class CameraManager:
 
     _INDICES = (0, 1, 2)
     _WARMUP_READS = 3
+    _MAX_CONSECUTIVE_FAILURES = 10  # ~0.5 s of read failures → declare device dead
 
     def __init__(self, camera_index: int = 0) -> None:
         self.camera_index = camera_index
@@ -52,7 +54,6 @@ class CameraManager:
         with several discarded reads.  Returns ``(None, None)`` if no camera
         index produces a valid frame.
         """
-        import sys
         if cv2 is None:
             return None, None
         for index in self._INDICES:
@@ -118,25 +119,58 @@ class CameraManager:
             LOGGER.error("Camera not found or busy")
             raise CameraUnavailableError("Camera not found or busy")
 
-        def init_and_loop() -> None:
-            self._capture_loop()
-
         LOGGER.info("Camera capture started")
-        self._thread = threading.Thread(target=init_and_loop, daemon=True)
+        self._thread = threading.Thread(target=self._capture_loop, daemon=True)
         self._thread.start()
 
     def _capture_loop(self) -> None:
-        """Continuously read frames to keep latest frame available."""
-        while self._running:
-            if self._capture is None:
-                break
-            ok, frame = self._capture.read()
-            if ok and frame is not None:
-                with self._lock:
-                    self._latest_frame = frame.copy()
-            else:
-                LOGGER.warning("Frame read failed; retrying")
-                time.sleep(0.05)
+        """Continuously read frames; self-terminates and releases the hardware
+        lock if the device is disconnected or fails consecutively."""
+        consecutive_failures = 0
+        try:
+            while self._running:
+                if self._capture is None:
+                    break
+                try:
+                    ok, frame = self._capture.read()
+                except Exception as exc:
+                    LOGGER.error("cv2.read() raised unexpectedly: %s", exc)
+                    ok, frame = False, None
+
+                if ok and frame is not None:
+                    consecutive_failures = 0
+                    with self._lock:
+                        self._latest_frame = frame.copy()
+                else:
+                    consecutive_failures += 1
+                    LOGGER.warning(
+                        "Frame read failed (%d/%d)",
+                        consecutive_failures,
+                        self._MAX_CONSECUTIVE_FAILURES,
+                    )
+                    if consecutive_failures >= self._MAX_CONSECUTIVE_FAILURES:
+                        LOGGER.error(
+                            "Camera declared dead after %d consecutive read failures "
+                            "(device likely disconnected) — stopping capture thread.",
+                            consecutive_failures,
+                        )
+                        break
+                    time.sleep(0.05)
+        finally:
+            # Guaranteed to run on every exit path, including unhandled exceptions.
+            # When the thread self-terminates here (hardware failure), this is the
+            # sole owner of release(); stop() detects _capture is None and skips it.
+            with self._lock:
+                self._running = False
+                if self._capture is not None:
+                    try:
+                        self._capture.release()
+                    except Exception:
+                        LOGGER.exception("cv2.VideoCapture.release() failed during cleanup")
+                    self._capture = None
+                self._latest_frame = None
+                self._active_camera_index = None
+            LOGGER.info("Capture thread exited and hardware lock released.")
 
     def stop(self) -> None:
         """Stop capture thread and release camera resource safely."""
@@ -172,30 +206,17 @@ class CameraManager:
         with self._lock:
             return self._running and self._capture is not None
 
-    @property
     def is_available(self) -> bool:
         """True if capture is running, or a quick probe shows hardware is usable."""
         with self._lock:
             if self._running and self._capture is not None:
                 return True
-            now = time.time()
-            if (
-                self._hw_probe_cache is not None
-                and (now - self._hw_probe_time) < self._hw_probe_ttl_seconds
-            ):
-                return self._hw_probe_cache
-        # Run the probe outside the lock to avoid blocking other threads during the
-        # potentially slow camera open/close cycle.
-        result = self._probe_hardware_available()
-        with self._lock:
-            # Only update the cache if it hasn't been refreshed by another thread
-            # while we were probing.
-            if (
-                self._hw_probe_cache is None
-                or (time.time() - self._hw_probe_time) >= self._hw_probe_ttl_seconds
-            ):
-                self._hw_probe_cache = result
-                self._hw_probe_time = time.time()
-            else:
-                result = self._hw_probe_cache
-        return result
+        now = time.time()
+        if (
+            self._hw_probe_cache is not None
+            and (now - self._hw_probe_time) < self._hw_probe_ttl_seconds
+        ):
+            return self._hw_probe_cache
+        self._hw_probe_cache = self._probe_hardware_available()
+        self._hw_probe_time = now
+        return self._hw_probe_cache

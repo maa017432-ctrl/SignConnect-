@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import atexit
 import logging
-import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -39,11 +38,7 @@ def create_app() -> Flask:
     load_dotenv(env_path)
 
     app = Flask(__name__)
-    try:
-        app.config.from_object(Config())
-    except RuntimeError as exc:
-        print(str(exc), file=sys.stderr)
-        sys.exit(1)
+    app.config.from_object(Config())
 
     logging.basicConfig(
         level=getattr(logging, app.config["LOG_LEVEL"], logging.INFO),
@@ -148,6 +143,23 @@ def create_app() -> Flask:
             LOGGER.exception("Failed to stop camera manager on exit")
 
     atexit.register(_stop_camera_on_exit)
+
+    # atexit only fires on a clean Python exit; a raw SIGTERM (e.g. systemd
+    # `stop`, `kill <pid>`, or container orchestrator shutdown) bypasses it.
+    # Install an explicit handler so the camera FD is always released.
+    import signal as _signal
+
+    _original_sigterm = _signal.getsignal(_signal.SIGTERM)
+
+    def _sigterm_handler(sig: int, frame: object) -> None:
+        LOGGER.info("SIGTERM received — releasing camera hardware lock before exit")
+        _stop_camera_on_exit()
+        # Restore and re-raise so the WSGI server (Waitress) can complete its
+        # own orderly shutdown (drain in-flight requests, close sockets, etc.).
+        _signal.signal(_signal.SIGTERM, _original_sigterm or _signal.SIG_DFL)
+        _signal.raise_signal(_signal.SIGTERM)
+
+    _signal.signal(_signal.SIGTERM, _sigterm_handler)
 
     return app
 
