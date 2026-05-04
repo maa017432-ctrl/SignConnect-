@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 from io import BytesIO
@@ -24,6 +25,7 @@ LOGGER = logging.getLogger(__name__)
 stream_bp = Blueprint("stream", __name__)
 
 _CAMERA_RETRY_INTERVAL_S = 5.0
+_JPEG_QUALITY = max(0, min(100, int(os.environ.get("MJPEG_JPEG_QUALITY", "75"))))  # clamped 0-100
 _TARGET_FPS = 30
 _prediction_lock = threading.Lock()
 
@@ -151,7 +153,15 @@ def _annotate_and_encode_jpeg(app: Any, frame: np.ndarray) -> bytes | None:
 
         _emit_prediction(app, prediction_payload)
 
-        ok, encoded = cv2.imencode(".jpg", annotated)
+        if inference_ms is not None:
+            LOGGER.debug(
+                "inference_ms=%.1f label=%s confidence=%.3f",
+                inference_ms, raw_label, raw_confidence,
+            )
+
+        ok, encoded = cv2.imencode(
+            ".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, _JPEG_QUALITY]
+        )
         if not ok:
             return None
         return encoded.tobytes()
