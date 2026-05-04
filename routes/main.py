@@ -59,7 +59,7 @@ def history() -> str:
             """
             SELECT gesture_label, confidence, audio_file, created_at
             FROM translations
-            WHERE user_id IS ?
+            WHERE user_id = ?
             ORDER BY id DESC
             LIMIT 50
             """,

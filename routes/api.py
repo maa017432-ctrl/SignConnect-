@@ -172,7 +172,7 @@ def get_history() -> tuple[list[dict[str, str | float | None]], int]:
             """
             SELECT id, gesture_label, confidence, audio_file, created_at
             FROM translations
-            WHERE user_id IS ?
+            WHERE user_id = ?
             ORDER BY id DESC
             LIMIT 50
             """,
@@ -225,7 +225,7 @@ def clear_history() -> tuple[dict[str, str], int]:
         return jsonify({"error": "Unauthorized", "code": 401}), 401
     user_id = session.get("user_id")
     with get_connection(current_app.config["DATABASE_PATH"]) as connection:
-        connection.execute("DELETE FROM translations WHERE user_id IS ?", (user_id,))
+        connection.execute("DELETE FROM translations WHERE user_id = ?", (user_id,))
     return jsonify({"status": "cleared"}), 200
 
 
