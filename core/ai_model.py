@@ -289,8 +289,11 @@ class GestureClassifier:
 
         if len(self._sequence_buffer) < self.sequence_length:
             pad_count = self.sequence_length - len(self._sequence_buffer)
-            zero_frame = np.zeros(self.model_input_dim, dtype=np.float32)
-            frames = [zero_frame.copy() for _ in range(pad_count)] + list(self._sequence_buffer)
+            padding = [
+                np.zeros(self.model_input_dim, dtype=np.float32)
+                for _ in range(pad_count)
+            ]
+            frames = padding + list(self._sequence_buffer)
         else:
             frames = list(self._sequence_buffer)
 

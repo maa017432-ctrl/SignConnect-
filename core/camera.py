@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 import threading
 import time
 from typing import Any, Optional
@@ -52,7 +53,6 @@ class CameraManager:
         with several discarded reads.  Returns ``(None, None)`` if no camera
         index produces a valid frame.
         """
-        import sys
         if cv2 is None:
             return None, None
         for index in self._INDICES:
@@ -118,11 +118,8 @@ class CameraManager:
             LOGGER.error("Camera not found or busy")
             raise CameraUnavailableError("Camera not found or busy")
 
-        def init_and_loop() -> None:
-            self._capture_loop()
-
         LOGGER.info("Camera capture started")
-        self._thread = threading.Thread(target=init_and_loop, daemon=True)
+        self._thread = threading.Thread(target=self._capture_loop, daemon=True)
         self._thread.start()
 
     def _capture_loop(self) -> None:

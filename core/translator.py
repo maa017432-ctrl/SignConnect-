@@ -42,5 +42,5 @@ class Translator:
         """Return all known labels sorted by numeric index."""
         return [
             self.label_map[key]
-            for key in sorted(self.label_map.keys(), key=lambda value: int(value))
+            for key in sorted(self.label_map.keys(), key=lambda k: int(k))
         ]

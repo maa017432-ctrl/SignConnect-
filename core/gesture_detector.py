@@ -46,7 +46,6 @@ class GestureDetector:
     def _try_init(self) -> None:
         """Try to initialize MediaPipe resources without propagating failures."""
         self._available = False
-        _ = mp  # touch import for clarity
         try:
             if mp is None or cv2 is None:
                 raise RuntimeError("MediaPipe or OpenCV not importable")
@@ -103,10 +102,8 @@ class GestureDetector:
                     ],
                     dtype=np.float32,
                 )
-                mean_x = float(
-                    sum(lm.x for lm in hand_landmarks.landmark)
-                    / max(1, len(hand_landmarks.landmark))
-                )
+                # x-coordinates are at indices 0, 3, 6, … in the flattened array
+                mean_x = float(flat[0::3].mean())
                 hands_data.append((mean_x, flat))
 
             hands_data.sort(key=lambda item: item[0])

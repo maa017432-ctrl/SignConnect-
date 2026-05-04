@@ -492,10 +492,10 @@
       item.className = "gesture-item";
       item.innerHTML = `
         <div class="gesture-item-left">
-          <span class="gesture-item-name">${gesture.name}</span>
-          <span class="gesture-item-desc">${gesture.description}</span>
+          <span class="gesture-item-name">${escHtml(gesture.name)}</span>
+          <span class="gesture-item-desc">${escHtml(gesture.description)}</span>
         </div>
-        <span class="gesture-item-difficulty ${gesture.difficulty}">${gesture.difficulty}</span>
+        <span class="gesture-item-difficulty ${escHtml(gesture.difficulty)}">${escHtml(gesture.difficulty)}</span>
       `;
 
       item.addEventListener("click", () => {
@@ -800,6 +800,7 @@
    * Toggle settings modal
    */
   function toggleSettingsModal() {
+    if (!settingsModal) return;
     if (settingsModal.classList.contains("hidden")) {
       settingsModal.classList.remove("hidden");
       loadSettingsUI();
@@ -819,7 +820,7 @@
    * Close settings modal
    */
   function closeSettingsModal() {
-    settingsModal.classList.add("hidden");
+    if (settingsModal) settingsModal.classList.add("hidden");
   }
 
   function initSocket() {

@@ -140,7 +140,7 @@ def translate() -> tuple[dict[str, str | int], int]:
 
     try:
         latest = current_app.extensions.get("latest_prediction") or {}
-        confidence = float(latest.get("confidence") or 0.0) or None
+        confidence = float(latest.get("confidence") or 0.0)
         with get_connection(current_app.config["DATABASE_PATH"]) as connection:
             row = connection.execute(
                 "SELECT id FROM sessions ORDER BY id DESC LIMIT 1"
