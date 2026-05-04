@@ -4,11 +4,16 @@ SignConnect is an AI-based real-time sign language translator built with Flask, 
 
 ## Features
 
-- Real-time webcam stream for hand gesture translation
-- MediaPipe hand landmark extraction and model-based classification
-- Demo mode when model file is missing or invalid
-- Text-to-speech output with online and offline fallback
-- Translation history stored in SQLite and viewable in UI
+- Real-time MJPEG webcam stream with WebSocket push predictions
+- MediaPipe hand landmark extraction and model-based gesture classification
+- Temporal BiGRU/BiGRU-Attention model for sequence-based WLASL gesture recognition
+- Real-time coaching system — confidence-aware feedback messages below the video feed
+- Text-to-speech output via gTTS (online) with pyttsx3 offline fallback
+- Translation history stored in SQLite, scoped per signed-in user
+- User accounts (sign-up / sign-in / sign-out) with session-based auth
+- Multi-language UI and TTS support (English, Arabic, French, Spanish, German, Chinese, Japanese, Korean)
+- Demo mode when no trained model is present
+- Dark/light theme with localStorage persistence
 
 ## Setup
 
@@ -24,10 +29,10 @@ SignConnect is an AI-based real-time sign language translator built with Flask, 
 
 ## Environment Notes
 
-- Use Python 3.11 with the project-local `.venv311` environment.
-- This Windows setup uses TensorFlow CPU execution. AMD GPU training is not expected to work with this TensorFlow stack.
-- `mediapipe==0.10.9` is pinned with `protobuf<4` to avoid known protobuf compatibility problems.
-- To check the runtime environment before debugging the app, run:
+- Python 3.11 or 3.12 is supported. The launch scripts default to a `.venv311` environment.
+- TensorFlow runs CPU-only on Windows. NVIDIA/CUDA GPU acceleration requires TF ≤ 2.10 on Windows native.
+- `mediapipe==0.10.30` is pinned with `protobuf>=3.20,<4` — versions 0.10.31+ removed the legacy solutions API.
+- To check the runtime environment before debugging, run:
   - `.venv311\Scripts\python.exe scripts\diagnose.py`
 
 ## Model Training (Overview)
@@ -36,25 +41,36 @@ SignConnect is an AI-based real-time sign language translator built with Flask, 
 2. Train a Keras model that outputs probabilities for the labels in `models/label_map.json`.
 3. Export model to `models/gesture_model.h5`.
 4. Keep `models/label_map.json` aligned with output indices.
-5. Keep the input feature contract at `126` values: two hands x 21 landmarks x 3 coordinates.
+5. Keep the input feature contract at `126` values: two hands × 21 landmarks × 3 coordinates.
 
 For WLASL temporal training:
 
 1. Audit local data: `.venv311\Scripts\python.exe scripts\audit_wlasl.py`
 2. Extract sequences: `.venv311\Scripts\python.exe scripts\wlasl_to_sequences.py --max-classes 50`
-3. Train temporal model: `.venv311\Scripts\python.exe scripts\train_temporal.py --max-classes 50`
-4. Set `MODEL_TYPE=temporal_landmark` and `SEQUENCE_LENGTH=30` before running the app with the temporal model.
-5. Review `models\temporal_metrics.json` and `models\temporal_confusion_matrix.csv`; do not use random frame accuracy as the source of truth.
+3. Train temporal model:
+   - `.venv311\Scripts\python.exe scripts\train_temporal.py --max-classes 50 --arch bigru_attention --epochs 150 --augment`
+   - Key flags: `--arch bigru|bigru_attention`, `--epochs N`, `--dropout F`, `--batch-size N`, `--augment`, `--exact-classes N`, `--drive-checkpoint DIR`
+4. Set `MODEL_TYPE=temporal_landmark` and `SEQUENCE_LENGTH=30` in `.env` before starting the app.
+5. Review `models/temporal_metrics.json` and `models/temporal_confusion_matrix.csv`; do not treat per-frame accuracy as the ground truth.
 
-To run the staged path end-to-end, use:
+To run staged tier training end-to-end:
 
 `.venv311\Scripts\python.exe scripts\run_wlasl_tiers.py --tiers 50 100 300`
 
 ## API Documentation
 
-| Method | Endpoint | Description | Response |
-|---|---|---|---|
-| GET | `/api/status` | Service health status | `{camera, model, tts}` |
-| POST | `/api/translate` | TTS from text body | `{audio_url}` |
-| GET | `/api/history` | Last 50 translation entries | `[{...}]` |
-| DELETE | `/api/history` | Clears translation table for session testing | `{status}` |
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/api/status` | Service health — camera, model, TTS state |
+| GET | `/api/prediction` | Latest gesture prediction (label, confidence) |
+| GET | `/api/camera_frame` | Single JPEG frame snapshot |
+| POST | `/api/translate` | Synthesize TTS audio from text body — returns `{audio_url}` |
+| POST | `/api/sentence/delete` | Remove last word from active sentence |
+| POST | `/api/sentence/clear` | Clear entire active sentence |
+| GET | `/api/history` | Last 50 translation entries for the signed-in user |
+| DELETE | `/api/history` | Clear translation history for the signed-in user |
+| GET | `/api/config` | Read live prediction thresholds |
+| POST | `/api/config` | Update live prediction thresholds |
+| POST | `/api/model/reload` | Hot-reload model from disk (admin API key required) |
+| GET | `/api/labels` | All gesture labels from the loaded label map |
+| GET | `/api/translations/<lang>` | UI string translations for the given language code |
