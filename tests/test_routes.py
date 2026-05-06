@@ -54,6 +54,7 @@ def test_health_endpoint(client) -> None:
 
 
 def test_camera_frame_jpeg(client) -> None:
+    """Translator preview polls these URLs; must be JPEG, not JSON 404."""
     for path in ("/camera_frame", "/api/camera_frame"):
         response = client.get(path)
         assert response.status_code == 200, path
