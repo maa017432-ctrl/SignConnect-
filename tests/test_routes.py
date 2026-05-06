@@ -37,8 +37,23 @@ def test_api_routes(client) -> None:
     assert client.delete("/api/history").status_code == 200
 
 
+def test_health_endpoint(client) -> None:
+    """Health endpoint should return JSON with required fields."""
+    response = client.get("/api/health")
+    # Status is either 200 (model loaded) or 503 (demo/no model) — both valid
+    assert response.status_code in (200, 503)
+    payload = response.get_json()
+    assert payload is not None
+    assert "status" in payload
+    assert payload["status"] in ("ok", "degraded")
+    assert "uptime_seconds" in payload
+    assert isinstance(payload["uptime_seconds"], (int, float))
+    assert payload["uptime_seconds"] >= 0
+    assert "model_loaded" in payload
+    assert isinstance(payload["model_loaded"], bool)
+
+
 def test_camera_frame_jpeg(client) -> None:
-    """Translator preview polls these URLs; must be JPEG, not JSON 404."""
     for path in ("/camera_frame", "/api/camera_frame"):
         response = client.get(path)
         assert response.status_code == 200, path

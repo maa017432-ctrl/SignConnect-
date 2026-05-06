@@ -16,6 +16,7 @@ from config import Config
 from core.ai_model import GestureClassifier
 from core.camera import CameraManager
 from core.gesture_detector import GestureDetector
+from core.logging_config import configure_logging
 from core.prediction_smoother import PredictionSmoother, SentenceBuilder
 from core.translator import Translator
 from core.tts_engine import TTSEngine
@@ -40,10 +41,7 @@ def create_app() -> Flask:
     app = Flask(__name__)
     app.config.from_object(Config())
 
-    logging.basicConfig(
-        level=getattr(logging, app.config["LOG_LEVEL"], logging.INFO),
-        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-    )
+    configure_logging(app.config["LOG_LEVEL"])
 
     # ── CORS: restrict to configured origins only (no wildcard) ──
     CORS(app, origins=app.config["ALLOWED_ORIGINS"], supports_credentials=True)

@@ -4,13 +4,20 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from pathlib import Path
 
 from flask import Blueprint, current_app, jsonify, request, session
 from flask.wrappers import Response
 
+from core.logging_config import get_uptime_seconds
 from database.db import get_connection
 from routes.stream import _prediction_lock, camera_frame_response
+
+try:
+    import psutil as _psutil
+except ImportError:  # pragma: no cover
+    _psutil = None  # type: ignore[assignment]
 
 
 LOGGER = logging.getLogger(__name__)
@@ -60,7 +67,39 @@ def status() -> tuple[dict[str, object], int]:
     )
 
 
-@api_bp.get("/api/camera_frame")
+@api_bp.get("/api/health")
+def health() -> tuple[Response, int]:
+    """Deep health check suitable for load-balancer and orchestrator probes.
+
+    Returns HTTP 200 with a JSON body while all critical components are
+    operational, or HTTP 503 when the model is unavailable.  Memory metrics
+    are included when ``psutil`` is installed; if it is absent the ``memory``
+    key is omitted rather than causing a hard error.
+    """
+    classifier = current_app.extensions.get("classifier")
+    model_loaded: bool = bool(classifier and classifier.is_available)
+
+    payload: dict[str, object] = {
+        "status": "ok" if model_loaded else "degraded",
+        "uptime_seconds": round(get_uptime_seconds(), 3),
+        "model_loaded": model_loaded,
+    }
+
+    if _psutil is not None:
+        try:
+            proc = _psutil.Process()
+            mem = proc.memory_info()
+            payload["memory"] = {
+                "rss_mb": round(mem.rss / (1024 * 1024), 2),
+                "vms_mb": round(mem.vms / (1024 * 1024), 2),
+            }
+        except Exception:
+            LOGGER.debug("psutil memory query failed", exc_info=True)
+
+    http_status = 200 if model_loaded else 503
+    return jsonify(payload), http_status
+
+
 def api_camera_frame() -> Response:
     """Same JPEG as ``/camera_frame``; use this URL if the root path is blocked or stale."""
     return camera_frame_response()
