@@ -325,6 +325,11 @@ class GestureClassifier:
                 else:
                     features = self._prepare_features(landmarks_array)
                 output = self.model(features, training=False)
+                # .numpy() materialises a new, NumPy-owned array — never a
+                # view into the TF tensor — so deleting output immediately
+                # frees the TF backing allocation without affecting probabilities.
+                # copy=False skips a redundant allocation when the tensor dtype
+                # is already float32 (Keras dense-softmax always produces float32).
                 probabilities = output[0].numpy().astype(np.float32, copy=False)
                 del output  # release TF backing memory as early as possible
                 if probabilities.size == 0:
