@@ -54,7 +54,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          sed 's/^opencv-python\([^-]\)/opencv-python-headless\1/' requirements.txt \
+          sed '/^opencv-python-headless/!s/^opencv-python/opencv-python-headless/' requirements.txt \
             | pip install --no-cache-dir -r /dev/stdin
           pip install --no-cache-dir -r requirements-dev.txt
 
