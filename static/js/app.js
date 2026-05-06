@@ -23,6 +23,7 @@
   const copyBtn = document.getElementById("copy-btn");
   const deleteWordBtn = document.getElementById("delete-word-btn");
   const speakBtn = document.getElementById("speak-btn");
+  const autoSpeakBtn = document.getElementById("auto-speak-btn");
   const refreshHistBtn = document.getElementById("refresh-history-btn");
   const clearHistBtn = document.getElementById("clear-history-btn");
   const langSelect = document.getElementById("lang-select");
@@ -93,6 +94,47 @@
   let blobUrl = null;
   let prevFrameAt = 0;
   let fpsWindow = [];   // sliding window of frame intervals (ms)
+
+  /* ── Auto-speak ────────────────────────────────────────────── */
+  const AUTO_SPEAK_STORAGE_KEY = "signconnect_auto_speak";
+  let autoSpeak = localStorage.getItem(AUTO_SPEAK_STORAGE_KEY) === "1";
+  let _prevSentenceWordCount = 0;  // tracks word count to detect new commits
+  let _autoSpeakInFlight = false;  // prevents overlapping TTS requests
+
+  function _applyAutoSpeakButton() {
+    if (!autoSpeakBtn) return;
+    if (autoSpeak) {
+      autoSpeakBtn.classList.add("sc-btn--active");
+      autoSpeakBtn.setAttribute("aria-pressed", "true");
+      autoSpeakBtn.title = "Auto-speak ON — click to disable";
+    } else {
+      autoSpeakBtn.classList.remove("sc-btn--active");
+      autoSpeakBtn.setAttribute("aria-pressed", "false");
+      autoSpeakBtn.title = "Auto-speak OFF — click to enable";
+    }
+  }
+
+  function toggleAutoSpeak() {
+    autoSpeak = !autoSpeak;
+    localStorage.setItem(AUTO_SPEAK_STORAGE_KEY, autoSpeak ? "1" : "0");
+    _applyAutoSpeakButton();
+  }
+
+  async function _autoSpeakSentence(sentence) {
+    if (_autoSpeakInFlight) return;
+    _autoSpeakInFlight = true;
+    try {
+      const res = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: sentence, lang: getSelectedLang() }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.audio_url) new Audio(data.audio_url).play().catch(() => { });
+    } catch { /* network/playback errors are non-fatal */ }
+    finally { _autoSpeakInFlight = false; }
+  }
 
   /* ── WebSocket (socket.io) — push-based predictions ─────────── */
   let socketConnected = false;
@@ -1061,9 +1103,16 @@
     if (sentence) {
       sentenceDisplay.textContent = sentence;
       sentenceDisplay.classList.add("has-content");
+      // Auto-speak: fire when the sentence has grown by at least one word.
+      const wordCount = sentence.trim().split(/\s+/).length;
+      if (autoSpeak && wordCount > _prevSentenceWordCount) {
+        _autoSpeakSentence(sentence);
+      }
+      _prevSentenceWordCount = wordCount;
     } else {
       sentenceDisplay.textContent = "…";
       sentenceDisplay.classList.remove("has-content");
+      _prevSentenceWordCount = 0;
     }
   }
 
@@ -1502,6 +1551,7 @@
       pauseBtn.addEventListener("click", () => paused ? startStream() : pauseStream());
     }
     if (speakBtn) speakBtn.addEventListener("click", speakText);
+    if (autoSpeakBtn) autoSpeakBtn.addEventListener("click", toggleAutoSpeak);
     if (copyBtn) copyBtn.addEventListener("click", copySentence);
     if (deleteWordBtn) deleteWordBtn.addEventListener("click", deleteLastWord);
     if (clearBtn) clearBtn.addEventListener("click", clearSentence);
@@ -1567,6 +1617,7 @@
   initThresholdSlider();
   initTrainingMode();
   bindButtons();
+  _applyAutoSpeakButton();  // reflect persisted auto-speak state on load
   markActiveNav();
   loadGestureReferences();
 

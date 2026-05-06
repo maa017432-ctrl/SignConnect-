@@ -158,6 +158,37 @@ def sentence_clear() -> tuple[dict[str, str], int]:
     return jsonify({"sentence": ""}), 200
 
 
+@api_bp.post("/api/tts")
+def tts() -> tuple[dict[str, str | int], int]:
+    """Synthesise speech and return an audio URL without writing to history.
+
+    This lightweight endpoint is used by the auto-speak feature to speak each
+    committed word without polluting the translation history.  Use
+    ``POST /api/translate`` instead when a history entry is also desired.
+    """
+    payload = request.get_json(silent=True) or {}
+    text = str(payload.get("text", "")).strip()
+    if not text:
+        return jsonify({"error": "Missing text", "code": 400}), 400
+    if len(text) > _MAX_TEXT_LEN:
+        return jsonify({"error": f"Text exceeds {_MAX_TEXT_LEN} character limit", "code": 400}), 400
+
+    lang = str(payload.get("lang", "en")).strip().lower() or "en"
+
+    tts_engine = current_app.extensions["tts_engine"]
+    try:
+        filename = tts_engine.synthesize(text, lang=lang)
+    except ValueError:
+        return jsonify({"error": "Invalid text input", "code": 400}), 400
+    except RuntimeError:
+        return jsonify({"error": "TTS generation failed", "code": 503}), 503
+
+    if filename is None:
+        return jsonify({"error": "TTS unavailable or synthesis failed", "code": 503}), 503
+
+    return jsonify({"audio_url": f"/static/audio/{filename}"}), 200
+
+
 @api_bp.post("/api/translate")
 def translate() -> tuple[dict[str, str | int], int]:
     """Convert input text to speech and return audio URL."""

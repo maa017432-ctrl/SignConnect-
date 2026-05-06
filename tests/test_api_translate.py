@@ -95,6 +95,71 @@ class TestApiTranslate:
 
 # ── /api/config ───────────────────────────────────────────────────────────────
 
+class TestApiTts:
+    """Tests for the lightweight /api/tts endpoint (no DB write)."""
+
+    def test_empty_text_returns_400(self, client) -> None:
+        res = client.post("/api/tts", json={"text": ""})
+        assert res.status_code == 400
+        body = res.get_json()
+        assert body is not None
+        assert "error" in body
+
+    def test_missing_text_field_returns_400(self, client) -> None:
+        res = client.post("/api/tts", json={"lang": "en"})
+        assert res.status_code == 400
+
+    def test_tts_unavailable_returns_503(self, client, app) -> None:
+        tts = app.extensions["tts_engine"]
+        with patch.object(tts, "synthesize", return_value=None):
+            res = client.post("/api/tts", json={"text": "Hello"})
+        assert res.status_code == 503
+
+    def test_happy_path_returns_audio_url(self, client, app) -> None:
+        tts = app.extensions["tts_engine"]
+        with patch.object(tts, "synthesize", return_value="tts_abc123.mp3"):
+            res = client.post("/api/tts", json={"text": "Hello world"})
+        assert res.status_code == 200
+        body = res.get_json()
+        assert body is not None
+        assert "audio_url" in body
+        assert body["audio_url"].endswith("tts_abc123.mp3")
+
+    def test_lang_param_forwarded(self, client, app) -> None:
+        tts = app.extensions["tts_engine"]
+        with patch.object(tts, "synthesize", return_value="tts_fr.mp3") as mock_syn:
+            res = client.post("/api/tts", json={"text": "Bonjour", "lang": "fr"})
+        if res.status_code == 200 and mock_syn.called:
+            _, kwargs = mock_syn.call_args
+            assert kwargs.get("lang") == "fr"
+
+    def test_does_not_write_to_database(self, client, app) -> None:
+        """Unlike /api/translate, /api/tts must not insert a history row."""
+        from database.db import get_connection
+
+        tts = app.extensions["tts_engine"]
+        with patch.object(tts, "synthesize", return_value="tts_nodb.mp3"):
+            with get_connection(app.config["DATABASE_PATH"]) as conn:
+                count_before = conn.execute(
+                    "SELECT COUNT(*) FROM translations"
+                ).fetchone()[0]
+            res = client.post("/api/tts", json={"text": "No history please"})
+            with get_connection(app.config["DATABASE_PATH"]) as conn:
+                count_after = conn.execute(
+                    "SELECT COUNT(*) FROM translations"
+                ).fetchone()[0]
+        assert res.status_code == 200
+        assert count_after == count_before
+
+    def test_text_too_long_returns_400(self, client) -> None:
+        long_text = "x" * 501
+        res = client.post("/api/tts", json={"text": long_text})
+        assert res.status_code == 400
+
+
+
+# ── /api/config ───────────────────────────────────────────────────────────────
+
 class TestApiConfig:
     def test_session_cookie_defaults_are_hardened(self, app) -> None:
         assert app.config["SESSION_COOKIE_HTTPONLY"] is True
