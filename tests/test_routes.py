@@ -51,6 +51,10 @@ def test_health_endpoint(client) -> None:
     assert payload["uptime_seconds"] >= 0
     assert "model_loaded" in payload
     assert isinstance(payload["model_loaded"], bool)
+    # threads is included when psutil is available (best-effort check)
+    if "threads" in payload:
+        assert isinstance(payload["threads"], int)
+        assert payload["threads"] >= 1
 
 
 def test_camera_frame_jpeg(client) -> None:

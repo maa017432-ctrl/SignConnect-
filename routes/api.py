@@ -93,6 +93,10 @@ def health() -> tuple[Response, int]:
                 "rss_mb": round(mem.rss / (1024 * 1024), 2),
                 "vms_mb": round(mem.vms / (1024 * 1024), 2),
             }
+            payload["threads"] = proc.num_threads()
+            # num_fds() is Unix-only; not available on Windows.
+            if hasattr(proc, "num_fds"):
+                payload["open_fds"] = proc.num_fds()
         except Exception:
             LOGGER.debug("psutil memory query failed", exc_info=True)
 

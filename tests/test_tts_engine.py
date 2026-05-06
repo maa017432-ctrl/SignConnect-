@@ -133,3 +133,99 @@ class TestCache:
             engine.synthesize("hello")
             engine.synthesize("hello")  # cache TTL=0, should re-synthesise
         assert mock_cls.call_count == 2
+
+
+class TestCachePruning:
+    def test_prune_cache_removes_expired_entries(self, audio_dir: Path) -> None:
+        engine, _ = _make_engine(audio_dir, cache_ttl_seconds=60)
+        now = 1000.0
+        engine._cache["old::en"] = (now - 61, "old.mp3")
+        engine._cache["new::en"] = (now - 10, "new.mp3")
+
+        engine._prune_cache(now)
+
+        assert "old::en" not in engine._cache
+        assert "new::en" in engine._cache
+
+    def test_prune_cache_keeps_fresh_entries(self, audio_dir: Path) -> None:
+        engine, _ = _make_engine(audio_dir, cache_ttl_seconds=60)
+        now = 1000.0
+        engine._cache["a::en"] = (now - 5, "a.mp3")
+        engine._cache["b::en"] = (now - 30, "b.mp3")
+
+        engine._prune_cache(now)
+
+        assert "a::en" in engine._cache
+        assert "b::en" in engine._cache
+
+    def test_periodic_cleanup_triggered(self, audio_dir: Path) -> None:
+        """After _CLEANUP_INTERVAL syntheses the cache prune is called."""
+        from core.tts_engine import TTSEngine
+
+        engine, _ = _make_engine(audio_dir)
+        engine._synthesize_count = TTSEngine._CLEANUP_INTERVAL - 1
+
+        with patch("core.tts_engine.gTTS") as mock_cls, \
+             patch.object(engine, "_prune_cache") as mock_prune, \
+             patch.object(engine, "_cleanup_stale_files") as mock_cleanup:
+            mock_cls.return_value = MagicMock()
+            engine._backend = "gtts"
+            engine.synthesize("trigger cleanup")
+
+        mock_prune.assert_called_once()
+        mock_cleanup.assert_called_once()
+
+    def test_synthesize_count_increments(self, audio_dir: Path) -> None:
+        engine, _ = _make_engine(audio_dir)
+        initial = engine._synthesize_count
+        with patch("core.tts_engine.gTTS") as mock_cls:
+            mock_cls.return_value = MagicMock()
+            engine._backend = "gtts"
+            engine.synthesize("hello world")
+        assert engine._synthesize_count == initial + 1
+
+
+class TestPyttsx3ResourceRelease:
+    def test_pyttsx3_engine_stop_called(self, audio_dir: Path) -> None:
+        """engine.stop() must be called after runAndWait() to free native resources."""
+        from core.tts_engine import TTSEngine
+
+        with (
+            patch("core.tts_engine.gTTS", None),
+        ):
+            with patch("core.tts_engine.pyttsx3") as mock_pyttsx3:
+                fake_engine = MagicMock()
+                mock_pyttsx3.init.return_value = fake_engine
+                engine = TTSEngine(audio_dir=str(audio_dir))
+
+        engine._backend = "pyttsx3"
+        with patch("core.tts_engine.pyttsx3") as mock_pyttsx3:
+            fake_engine = MagicMock()
+            mock_pyttsx3.init.return_value = fake_engine
+            engine.synthesize("test stop")
+
+        fake_engine.stop.assert_called_once()
+
+    def test_pyttsx3_engine_stop_called_on_runandwait_failure(
+        self, audio_dir: Path
+    ) -> None:
+        """engine.stop() must be called even when runAndWait() raises."""
+        from core.tts_engine import TTSEngine
+
+        with (
+            patch("core.tts_engine.gTTS", None),
+        ):
+            with patch("core.tts_engine.pyttsx3") as mock_pyttsx3:
+                fake_engine = MagicMock()
+                mock_pyttsx3.init.return_value = fake_engine
+                engine = TTSEngine(audio_dir=str(audio_dir))
+
+        engine._backend = "pyttsx3"
+        with patch("core.tts_engine.pyttsx3") as mock_pyttsx3:
+            fake_engine = MagicMock()
+            fake_engine.runAndWait.side_effect = RuntimeError("boom")
+            mock_pyttsx3.init.return_value = fake_engine
+            result = engine.synthesize("fails gracefully")
+
+        fake_engine.stop.assert_called_once()
+        assert result is None
