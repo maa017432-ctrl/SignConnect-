@@ -59,12 +59,15 @@ To run staged tier training end-to-end:
 
 ## API Documentation
 
+Interactive Swagger UI is available at `/api/docs`.
+
 | Method | Endpoint | Description |
 |---|---|---|
 | GET | `/api/status` | Service health — camera, model, TTS state |
 | GET | `/api/prediction` | Latest gesture prediction (label, confidence) |
 | GET | `/api/camera_frame` | Single JPEG frame snapshot |
-| POST | `/api/translate` | Synthesize TTS audio from text body — returns `{audio_url}` |
+| POST | `/api/tts` | Synthesise TTS audio from text body — returns `{audio_url}`, no history entry |
+| POST | `/api/translate` | Synthesise TTS audio from text body — returns `{audio_url}`, saves to history |
 | POST | `/api/sentence/delete` | Remove last word from active sentence |
 | POST | `/api/sentence/clear` | Clear entire active sentence |
 | GET | `/api/history` | Last 50 translation entries for the signed-in user |

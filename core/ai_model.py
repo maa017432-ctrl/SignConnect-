@@ -163,9 +163,9 @@ class GestureClassifier:
         norm_path = self.model_path.parent / "norm_stats.npz"
         if norm_path.exists():
             try:
-                stats = np.load(str(norm_path))
-                self._norm_mean = stats["mean"]
-                self._norm_std  = stats["std"]
+                with np.load(str(norm_path)) as stats:
+                    self._norm_mean = stats["mean"].copy()
+                    self._norm_std  = stats["std"].copy()
                 expected_shape = (self.model_input_dim,)
                 if (
                     self._norm_mean.shape != expected_shape
@@ -287,21 +287,18 @@ class GestureClassifier:
         frame = self._prepare_features(landmarks_array).reshape(self.model_input_dim)
         self._sequence_buffer.append(frame)
 
-        if len(self._sequence_buffer) < self.sequence_length:
-            pad_count = self.sequence_length - len(self._sequence_buffer)
-            padding = [
-                np.zeros(self.model_input_dim, dtype=np.float32)
-                for _ in range(pad_count)
-            ]
-            frames = padding + list(self._sequence_buffer)
-        else:
-            frames = list(self._sequence_buffer)
-
-        return np.asarray(frames, dtype=np.float32).reshape(
-            1,
-            self.sequence_length,
-            self.model_input_dim,
+        # Pre-allocate a single zero matrix (shape: T×D) and write the buffered
+        # frames right-aligned into it.  This avoids creating a Python list of
+        # individual np.zeros arrays for the padding rows and eliminates the
+        # intermediate list concatenation that was performed on every call.
+        n = len(self._sequence_buffer)
+        result = np.zeros(
+            (self.sequence_length, self.model_input_dim), dtype=np.float32
         )
+        buf = np.asarray(self._sequence_buffer, dtype=np.float32)
+        result[self.sequence_length - n :] = buf
+
+        return result.reshape(1, self.sequence_length, self.model_input_dim)
 
     def reset_sequence(self) -> None:
         """Clear temporal inference state."""
@@ -328,7 +325,13 @@ class GestureClassifier:
                 else:
                     features = self._prepare_features(landmarks_array)
                 output = self.model(features, training=False)
-                probabilities = output[0].numpy().astype(np.float32)
+                # .numpy() materialises a new, NumPy-owned array — never a
+                # view into the TF tensor — so deleting output immediately
+                # frees the TF backing allocation without affecting probabilities.
+                # copy=False skips a redundant allocation when the tensor dtype
+                # is already float32 (Keras dense-softmax always produces float32).
+                probabilities = output[0].numpy().astype(np.float32, copy=False)
+                del output  # release TF backing memory as early as possible
                 if probabilities.size == 0:
                     return {"label_index": -1, "confidence": 0.0, "top_candidates": []}
 

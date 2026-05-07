@@ -107,7 +107,7 @@
           </div>
           <div class="sc-widget-body">
             <p class="sc-widget-desc">Download your translation history for records or accessibility logs.</p>
-            <button id="export-csv-btn" class="sc-btn sc-btn--sm" style="width:100%;margin-top:12px">⬇ Download CSV</button>
+            <button id="download-history-btn" class="sc-btn sc-btn--sm" style="width:100%;margin-top:12px">⬇ Download History CSV</button>
           </div>
         </div>
 
@@ -139,37 +139,12 @@
   });
 
   // ── CSV Export ──────────────────────────────────────────────
-  var exportBtn = document.getElementById('export-csv-btn');
+  var exportBtn = document.getElementById('download-history-btn');
   var clearBtn = document.getElementById('clear-history-page-btn');
 
   if (exportBtn) {
     exportBtn.addEventListener('click', function () {
-      fetch('/api/history', { cache: 'no-store' })
-        .then(function (r) { return r.json(); })
-        .then(function (rows) {
-          if (!rows.length) {
-            alert('No history to export.');
-            return;
-          }
-          var header = ['Label', 'Confidence (%)', 'Audio File', 'Timestamp'];
-          var lines = [header.join(',')];
-          rows.forEach(function (row) {
-            lines.push([
-              '"' + (row.gesture_label || '').replace(/"/g, '""') + '"',
-              row.confidence != null ? (row.confidence * 100).toFixed(1) : '',
-              '"' + (row.audio_file || '') + '"',
-              '"' + (row.created_at || '') + '"'
-            ].join(','));
-          });
-          var blob = new Blob([lines.join('\n')], { type: 'text/csv' });
-          var url = URL.createObjectURL(blob);
-          var a = document.createElement('a');
-          a.href = url;
-          a.download = 'signconnect_history_' + new Date().toISOString().slice(0, 10) + '.csv';
-          a.click();
-          URL.revokeObjectURL(url);
-        })
-        .catch(function () { alert('Failed to fetch history.'); });
+      window.location.href = '/api/export_history';
     });
   }
 

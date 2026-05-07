@@ -84,7 +84,14 @@
               <svg viewBox="0 0 24 24" fill="currentColor" class="sc-btn-icon" style="width:14px;height:14px"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
               Pause
             </button>
+            <button id="upload-video-btn" class="sc-btn sc-btn--sm" type="button">
+              <svg viewBox="0 0 24 24" fill="currentColor" class="sc-btn-icon" style="width:14px;height:14px"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+              Upload Video
+            </button>
+            <input id="upload-video-input" type="file" accept="video/mp4" style="display:none">
           </div>
+          <div id="upload-video-status" style="margin-top:10px;color:var(--text-secondary);font-size:13px;min-height:20px"></div>
+          <progress id="upload-video-progress" value="0" max="100" style="width:100%;margin-top:6px;height:8px;display:none"></progress>
           <!-- Hidden start-btn kept for JS compatibility -->
           <div style="display:none">
             <button id="start-btn" class="sc-btn sc-btn--primary sc-btn--translate" type="button">
@@ -106,6 +113,7 @@
           <div class="sc-widget-body">
             <div id="sentence-display" class="sc-sentence-display">…</div>
             <div class="sc-sentence-actions">
+              <button id="auto-speak-btn" type="button" class="sc-btn sc-btn--sm" title="Toggle auto-speak: speaks each new word automatically" aria-pressed="false">🔊 Auto</button>
               <button id="speak-btn" type="button" class="sc-btn sc-btn--sm">🔊 Speak</button>
               <button id="copy-btn" type="button" class="sc-btn sc-btn--sm">📋 Copy</button>
               <button id="clear-btn" type="button" class="sc-btn sc-btn--sm sc-btn--danger">🗑 Clear</button>

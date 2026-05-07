@@ -27,6 +27,9 @@ LOGGER = logging.getLogger(__name__)
 class TTSEngine:
     """Generate speech audio files and cache repeated requests."""
 
+    # Run a stale-file sweep every this many synthesis calls.
+    _CLEANUP_INTERVAL: int = 50
+
     def __init__(self, audio_dir: str, cache_ttl_seconds: int = 60) -> None:
         self.audio_dir = Path(audio_dir)
         self.cache_ttl_seconds = cache_ttl_seconds
@@ -34,6 +37,7 @@ class TTSEngine:
         self._available = False
         self._backend: Optional[str] = None
         self._unavailable_warned = False
+        self._synthesize_count: int = 0
         self._try_init()
         self._cleanup_stale_files()
 
@@ -126,8 +130,12 @@ class TTSEngine:
                 if pyttsx3 is None:
                     raise RuntimeError("pyttsx3 is not installed")
                 engine = pyttsx3.init()
-                engine.save_to_file(normalized, str(output_path))
-                engine.runAndWait()
+                try:
+                    engine.save_to_file(normalized, str(output_path))
+                    engine.runAndWait()
+                finally:
+                    # Always stop the engine to release COM/native resources.
+                    engine.stop()
             else:
                 return None
         except Exception as error:
@@ -135,7 +143,27 @@ class TTSEngine:
             return None
 
         self._cache[cache_key] = (now, filename)
+
+        # Periodically prune stale in-memory cache entries and disk files to
+        # prevent unbounded memory and disk growth during long-running sessions.
+        self._synthesize_count += 1
+        if self._synthesize_count % self._CLEANUP_INTERVAL == 0:
+            self._prune_cache(now)
+            self._cleanup_stale_files()
+
         return filename
+
+    def _prune_cache(self, now: float) -> None:
+        """Remove in-memory cache entries whose TTL has elapsed."""
+        expired = [
+            key
+            for key, (ts, _) in self._cache.items()
+            if now - ts > self.cache_ttl_seconds
+        ]
+        for key in expired:
+            del self._cache[key]
+        if expired:
+            LOGGER.debug("TTS: pruned %d expired in-memory cache entries", len(expired))
 
     def _cleanup_stale_files(self) -> None:
         """Remove TTS audio files older than twice the cache TTL."""

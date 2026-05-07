@@ -9,12 +9,17 @@
 const CACHE_NAME   = "signconnect-v1";
 const OFFLINE_URL  = "/";
 
-// Assets to pre-cache on SW install
+// Assets to pre-cache on SW install.
+// These mirror the resources loaded by base.html so the app shell is
+// available offline after a single page visit.
 const PRECACHE = [
   "/",
   "/translator",
   "/history",
-  "/static/css/style.css",
+  "/static/css/design.css",
+  "/static/css/home.css",
+  "/static/css/pages.css",
+  "/static/js/i18n.js",
   "/static/js/app.js",
   "/static/manifest.json",
   "/static/icons/icon-192.png",

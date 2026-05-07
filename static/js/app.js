@@ -23,8 +23,13 @@
   const copyBtn = document.getElementById("copy-btn");
   const deleteWordBtn = document.getElementById("delete-word-btn");
   const speakBtn = document.getElementById("speak-btn");
+  const autoSpeakBtn = document.getElementById("auto-speak-btn");
   const refreshHistBtn = document.getElementById("refresh-history-btn");
   const clearHistBtn = document.getElementById("clear-history-btn");
+  const uploadVideoBtn = document.getElementById("upload-video-btn");
+  const uploadVideoInput = document.getElementById("upload-video-input");
+  const uploadVideoStatus = document.getElementById("upload-video-status");
+  const uploadVideoProgress = document.getElementById("upload-video-progress");
   const langSelect = document.getElementById("lang-select");
   const thresholdSlider = document.getElementById("threshold-slider");
   const thresholdVal = document.getElementById("threshold-val");
@@ -93,6 +98,66 @@
   let blobUrl = null;
   let prevFrameAt = 0;
   let fpsWindow = [];   // sliding window of frame intervals (ms)
+
+  /* ── Auto-speak ────────────────────────────────────────────── */
+  const AUTO_SPEAK_STORAGE_KEY = "signconnect_auto_speak";
+  let autoSpeak = localStorage.getItem(AUTO_SPEAK_STORAGE_KEY) === "1";
+  let _prevSentenceWordCount = 0;  // tracks word count to detect new commits
+  let _autoSpeakInFlight = false;  // prevents overlapping TTS requests
+  let _activeAudio = null;
+
+  function _applyAutoSpeakButton() {
+    if (!autoSpeakBtn) return;
+    if (autoSpeak) {
+      autoSpeakBtn.classList.add("sc-btn--active");
+      autoSpeakBtn.setAttribute("aria-pressed", "true");
+      autoSpeakBtn.title = "Auto-speak ON — click to disable";
+    } else {
+      autoSpeakBtn.classList.remove("sc-btn--active");
+      autoSpeakBtn.setAttribute("aria-pressed", "false");
+      autoSpeakBtn.title = "Auto-speak OFF — click to enable";
+    }
+  }
+
+  function toggleAutoSpeak() {
+    autoSpeak = !autoSpeak;
+    localStorage.setItem(AUTO_SPEAK_STORAGE_KEY, autoSpeak ? "1" : "0");
+    if (!autoSpeak && _activeAudio) {
+      _activeAudio.pause();
+      _activeAudio.currentTime = 0;
+    }
+    _applyAutoSpeakButton();
+  }
+
+  function playAudioUrl(audioUrl) {
+    if (!audioUrl) return;
+    if (_activeAudio) {
+      _activeAudio.pause();
+      _activeAudio.currentTime = 0;
+    }
+    const audio = new Audio(audioUrl);
+    _activeAudio = audio;
+    audio.addEventListener("ended", () => {
+      if (_activeAudio === audio) _activeAudio = null;
+    }, { once: true });
+    audio.play().catch(() => { });
+  }
+
+  async function _autoSpeakSentence(sentence) {
+    if (_autoSpeakInFlight) return;
+    _autoSpeakInFlight = true;
+    try {
+      const res = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: sentence, lang: getSelectedLang() }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      playAudioUrl(data.audio_url);
+    } catch { /* network/playback errors are non-fatal */ }
+    finally { _autoSpeakInFlight = false; }
+  }
 
   /* ── WebSocket (socket.io) — push-based predictions ─────────── */
   let socketConnected = false;
@@ -1061,9 +1126,16 @@
     if (sentence) {
       sentenceDisplay.textContent = sentence;
       sentenceDisplay.classList.add("has-content");
+      // Auto-speak: fire when the sentence has grown by at least one word.
+      const wordCount = sentence.trim().split(/\s+/).length;
+      if (autoSpeak && wordCount > _prevSentenceWordCount) {
+        _autoSpeakSentence(sentence);
+      }
+      _prevSentenceWordCount = wordCount;
     } else {
       sentenceDisplay.textContent = "…";
       sentenceDisplay.classList.remove("has-content");
+      _prevSentenceWordCount = 0;
     }
   }
 
@@ -1249,7 +1321,7 @@
       });
       if (!res.ok) return;
       const data = await res.json();
-      if (data.audio_url) new Audio(data.audio_url).play().catch(() => { });
+      playAudioUrl(data.audio_url);
       refreshHistorySidebar();
     } catch { /* ignore */ }
   }
@@ -1300,6 +1372,96 @@
       await fetch("/api/history", { method: "DELETE" });
     } catch { /* network error */ }
     refreshHistoryPage();
+  }
+
+  function setUploadStatus(message, isError = false) {
+    if (!uploadVideoStatus) return;
+    uploadVideoStatus.textContent = message || "";
+    uploadVideoStatus.style.color = isError ? "var(--color-danger, #ef4444)" : "var(--text-secondary)";
+  }
+
+  function resetUploadProgress() {
+    if (!uploadVideoProgress) return;
+    uploadVideoProgress.value = 0;
+    uploadVideoProgress.style.display = "none";
+  }
+
+  function uploadVideoFile(file) {
+    if (!file) return;
+    if (file.type && file.type !== "video/mp4") {
+      setUploadStatus("Please upload an MP4 video file.", true);
+      return;
+    }
+    if (!/\.mp4$/i.test(file.name || "")) {
+      setUploadStatus("Please select an MP4 file.", true);
+      return;
+    }
+
+    pauseStream();
+    showOverlay("Processing uploaded video…");
+    setUploadStatus("Uploading video for analysis...");
+    if (uploadVideoBtn) uploadVideoBtn.disabled = true;
+    if (pauseBtn) pauseBtn.disabled = true;
+    if (uploadVideoProgress) {
+      uploadVideoProgress.style.display = "block";
+      uploadVideoProgress.value = 0;
+    }
+
+    const formData = new FormData();
+    formData.append("video", file);
+
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/upload_video");
+
+    xhr.upload.onprogress = (event) => {
+      if (!uploadVideoProgress || !event.lengthComputable) return;
+      if (event.total === 0) return;
+      const pct = Math.max(0, Math.min(100, Math.round((event.loaded / event.total) * 100)));
+      uploadVideoProgress.value = pct;
+      setUploadStatus(`Uploading... ${pct}%`);
+    };
+
+    xhr.onload = () => {
+      let payload = {};
+      try { payload = JSON.parse(xhr.responseText || "{}"); } catch { }
+
+      if (xhr.status !== 200) {
+        setUploadStatus(payload.error || "Video upload failed.", true);
+        showOverlay("Upload failed");
+        if (uploadVideoBtn) uploadVideoBtn.disabled = false;
+        if (pauseBtn) pauseBtn.disabled = false;
+        resetUploadProgress();
+        return;
+      }
+
+      const text = String(payload.translation_text || "").trim();
+      const topGesture = String(payload.top_gesture || "");
+      const avg = Number(payload.average_confidence || 0);
+
+      if (recognizedText) recognizedText.textContent = topGesture || "—";
+      updateConfidence(avg);
+      updateSentenceDisplay(text);
+      updateProgressBar(0, 15, false);
+
+      const summary = text
+        ? `Video processed (${payload.frames_processed || 0} frames). Translation: ${text}`
+        : `Video processed (${payload.frames_processed || 0} frames). No strong gesture detected.`;
+      setUploadStatus(summary, false);
+      showOverlay("Upload complete — press Resume to return to live camera");
+      if (uploadVideoBtn) uploadVideoBtn.disabled = false;
+      if (pauseBtn) pauseBtn.disabled = false;
+      resetUploadProgress();
+    };
+
+    xhr.onerror = () => {
+      setUploadStatus("Network error while uploading video.", true);
+      showOverlay("Upload failed");
+      if (uploadVideoBtn) uploadVideoBtn.disabled = false;
+      if (pauseBtn) pauseBtn.disabled = false;
+      resetUploadProgress();
+    };
+
+    xhr.send(formData);
   }
 
   /* ── History (translator sidebar) ────────────────────────── */
@@ -1502,11 +1664,20 @@
       pauseBtn.addEventListener("click", () => paused ? startStream() : pauseStream());
     }
     if (speakBtn) speakBtn.addEventListener("click", speakText);
+    if (autoSpeakBtn) autoSpeakBtn.addEventListener("click", toggleAutoSpeak);
     if (copyBtn) copyBtn.addEventListener("click", copySentence);
     if (deleteWordBtn) deleteWordBtn.addEventListener("click", deleteLastWord);
     if (clearBtn) clearBtn.addEventListener("click", clearSentence);
     if (refreshHistBtn) refreshHistBtn.addEventListener("click", refreshHistoryPage);
     if (clearHistBtn) clearHistBtn.addEventListener("click", clearHistory);
+    if (uploadVideoBtn && uploadVideoInput) {
+      uploadVideoBtn.addEventListener("click", () => uploadVideoInput.click());
+      uploadVideoInput.addEventListener("change", () => {
+        const file = uploadVideoInput.files && uploadVideoInput.files[0];
+        uploadVideoFile(file);
+        uploadVideoInput.value = "";
+      });
+    }
 
     // Practice mode listeners
     if (practiceBtn) practiceBtn.addEventListener("click", togglePracticeMode);
@@ -1567,6 +1738,7 @@
   initThresholdSlider();
   initTrainingMode();
   bindButtons();
+  _applyAutoSpeakButton();  // reflect persisted auto-speak state on load
   markActiveNav();
   loadGestureReferences();
 

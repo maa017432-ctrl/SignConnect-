@@ -42,6 +42,10 @@
 .sc-btn--primary:hover{box-shadow:0 4px 25px rgba(139,92,246,.4);transform:translateY(-1px)}
 .sc-btn--danger{color:#f87171;border-color:rgba(239,68,68,.25)}
 .sc-btn--danger:hover{background:rgba(239,68,68,.1)}
+.sc-btn--active{background:rgba(139,92,246,.2);color:#c4b5fd;border-color:rgba(139,92,246,.5)}
+.sc-btn--active:hover{background:rgba(139,92,246,.3);border-color:rgba(139,92,246,.7)}
+html[data-theme="light"] .sc-btn--active{background:rgba(139,92,246,.15);color:#7c3aed;border-color:rgba(139,92,246,.4)}
+html[data-theme="light"] .sc-btn--active:hover{background:rgba(139,92,246,.25)}
 .sc-btn--nav-signin{display:none;padding:7px 18px;border-radius:999px;font-size:13px;background:rgba(139,92,246,.15);color:#c4b5fd;border-color:rgba(139,92,246,.3)}
 @media(min-width:768px){.sc-btn--nav-signin{display:inline-flex}}
 .sc-btn--nav-signin:hover{background:rgba(139,92,246,.25)}

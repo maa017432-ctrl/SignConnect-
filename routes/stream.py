@@ -230,6 +230,18 @@ def camera_frame_response() -> Response:
 
     Exposed as ``GET /camera_frame`` (``app.add_url_rule``) and
     ``GET /api/camera_frame``.
+    ---
+    tags:
+      - Streaming
+    summary: Poll a single annotated frame
+    produces:
+      - image/jpeg
+    responses:
+      200:
+        description: JPEG snapshot for lightweight preview polling.
+        schema:
+          type: string
+          format: binary
     """
     app = current_app._get_current_object()
     try:
@@ -254,7 +266,20 @@ def camera_frame_response() -> Response:
 
 @stream_bp.get("/video_feed")
 def video_feed() -> Response:
-    """Serve live camera feed as MJPEG stream (legacy / direct clients)."""
+    """Serve live camera feed as MJPEG stream (legacy / direct clients).
+    ---
+    tags:
+      - Streaming
+    summary: Stream the live annotated camera feed
+    produces:
+      - multipart/x-mixed-replace; boundary=frame
+    responses:
+      200:
+        description: Continuous MJPEG stream for browser or kiosk clients.
+        schema:
+          type: string
+          format: binary
+    """
     app = current_app._get_current_object()
     return Response(
         _generate_frames(app),

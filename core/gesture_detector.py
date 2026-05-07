@@ -43,8 +43,37 @@ class GestureDetector:
         """Return whether MediaPipe Hands is available and initialized."""
         return self._available
 
+    def close(self) -> None:
+        """Release MediaPipe Hands native resources explicitly.
+
+        Safe to call multiple times.  Should be called when the detector is
+        no longer needed (e.g. application shutdown) to free the TFLite model
+        allocation held by the MediaPipe C++ layer before Python GC runs.
+        """
+        if self.hands is not None:
+            try:
+                self.hands.close()
+            except Exception:  # pragma: no cover
+                pass
+            self.hands = None
+        self._available = False
+
+    def __del__(self) -> None:
+        """Ensure native resources are freed when the object is garbage-collected."""
+        self.close()
+
     def _try_init(self) -> None:
         """Try to initialize MediaPipe resources without propagating failures."""
+        # Release any previously-held native resources before reinitialising.
+        # Without this, each failed/repeated call to _try_init() would silently
+        # leak the TFLite model allocation inside the old Hands object.
+        if self.hands is not None:
+            try:
+                self.hands.close()
+            except Exception:  # pragma: no cover
+                pass
+            self.hands = None
+
         self._available = False
         try:
             if mp is None or cv2 is None:

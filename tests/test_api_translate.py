@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import types
 from pathlib import Path
 from unittest.mock import patch
 
+import numpy as np
 import pytest
 
 pytest.importorskip("flask")
@@ -91,6 +93,71 @@ class TestApiTranslate:
         assert body is not None
         assert "audio_url" in body
         assert body["audio_url"].endswith("abcdef123456.mp3")
+
+
+# ── /api/config ───────────────────────────────────────────────────────────────
+
+class TestApiTts:
+    """Tests for the lightweight /api/tts endpoint (no DB write)."""
+
+    def test_empty_text_returns_400(self, client) -> None:
+        res = client.post("/api/tts", json={"text": ""})
+        assert res.status_code == 400
+        body = res.get_json()
+        assert body is not None
+        assert "error" in body
+
+    def test_missing_text_field_returns_400(self, client) -> None:
+        res = client.post("/api/tts", json={"lang": "en"})
+        assert res.status_code == 400
+
+    def test_tts_unavailable_returns_503(self, client, app) -> None:
+        tts = app.extensions["tts_engine"]
+        with patch.object(tts, "synthesize", return_value=None):
+            res = client.post("/api/tts", json={"text": "Hello"})
+        assert res.status_code == 503
+
+    def test_happy_path_returns_audio_url(self, client, app) -> None:
+        tts = app.extensions["tts_engine"]
+        with patch.object(tts, "synthesize", return_value="tts_abc123.mp3"):
+            res = client.post("/api/tts", json={"text": "Hello world"})
+        assert res.status_code == 200
+        body = res.get_json()
+        assert body is not None
+        assert "audio_url" in body
+        assert body["audio_url"].endswith("tts_abc123.mp3")
+
+    def test_lang_param_forwarded(self, client, app) -> None:
+        tts = app.extensions["tts_engine"]
+        with patch.object(tts, "synthesize", return_value="tts_fr.mp3") as mock_syn:
+            res = client.post("/api/tts", json={"text": "Bonjour", "lang": "fr"})
+        if res.status_code == 200 and mock_syn.called:
+            _, kwargs = mock_syn.call_args
+            assert kwargs.get("lang") == "fr"
+
+    def test_does_not_write_to_database(self, client, app) -> None:
+        """Unlike /api/translate, /api/tts must not insert a history row."""
+        from database.db import get_connection
+
+        tts = app.extensions["tts_engine"]
+        with patch.object(tts, "synthesize", return_value="tts_nodb.mp3"):
+            with get_connection(app.config["DATABASE_PATH"]) as conn:
+                count_before = conn.execute(
+                    "SELECT COUNT(*) FROM translations"
+                ).fetchone()[0]
+            res = client.post("/api/tts", json={"text": "No history please"})
+            with get_connection(app.config["DATABASE_PATH"]) as conn:
+                count_after = conn.execute(
+                    "SELECT COUNT(*) FROM translations"
+                ).fetchone()[0]
+        assert res.status_code == 200
+        assert count_after == count_before
+
+    def test_text_too_long_returns_400(self, client) -> None:
+        long_text = "x" * 501
+        res = client.post("/api/tts", json={"text": long_text})
+        assert res.status_code == 400
+
 
 
 # ── /api/config ───────────────────────────────────────────────────────────────
@@ -185,6 +252,99 @@ class TestApiConfig:
         finally:
             app.config["DEBUG"] = original_debug
             app.config["API_KEY"] = original_key
+
+
+class TestVideoUploadApi:
+    def test_upload_video_missing_file_returns_400(self, client) -> None:
+        res = client.post("/api/upload_video", data={}, content_type="multipart/form-data")
+        assert res.status_code == 400
+        body = res.get_json()
+        assert body is not None
+        assert "error" in body
+
+    def test_upload_video_requires_mp4(self, client) -> None:
+        res = client.post(
+            "/api/upload_video",
+            data={"video": (Path(__file__).open("rb"), "not-video.txt")},
+            content_type="multipart/form-data",
+        )
+        assert res.status_code == 400
+
+    def test_upload_video_rejects_invalid_mp4_content(self, client) -> None:
+        import io
+
+        res = client.post(
+            "/api/upload_video",
+            data={"video": (io.BytesIO(b"not a real mp4"), "demo.mp4")},
+            content_type="multipart/form-data",
+        )
+        assert res.status_code == 400
+
+    def test_upload_video_rejects_misplaced_ftyp_signature(self, client) -> None:
+        import io
+
+        res = client.post(
+            "/api/upload_video",
+            data={"video": (io.BytesIO(b"xxxxxxftypmp42"), "demo.mp4")},
+            content_type="multipart/form-data",
+        )
+        assert res.status_code == 400
+
+    def test_upload_video_happy_path(self, client, app) -> None:
+        import io
+        import routes.api as api_routes
+
+        class DummyCapture:
+            def __init__(self, _path: str) -> None:
+                self._frames = [object(), object(), object(), object()]
+                self._index = 0
+
+            def isOpened(self) -> bool:
+                return True
+
+            def read(self):
+                if self._index >= len(self._frames):
+                    return False, None
+                frame = self._frames[self._index]
+                self._index += 1
+                return True, frame
+
+            def release(self) -> None:
+                return None
+
+        detector = app.extensions["gesture_detector"]
+        classifier = app.extensions["classifier"]
+        translator = app.extensions["translator"]
+
+        with (
+            patch.object(api_routes, "cv2", types.SimpleNamespace(VideoCapture=DummyCapture)),
+            patch.object(detector, "detect", return_value=(None, np.ones(126, dtype=np.float32))),
+            patch.object(
+                classifier,
+                "predict_with_details",
+                return_value={"label_index": 1, "confidence": 0.9, "top_candidates": []},
+            ),
+            patch.object(classifier, "reset_sequence"),
+            patch.object(translator, "get_label", return_value="Hello"),
+        ):
+            res = client.post(
+                "/api/upload_video",
+                data={
+                    "video": (
+                        io.BytesIO(b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42"),
+                        "demo.mp4",
+                    )
+                },
+                content_type="multipart/form-data",
+            )
+
+        assert res.status_code == 200
+        body = res.get_json()
+        assert body is not None
+        assert body["translation_text"] == "Hello"
+        assert body["top_gesture"] == "Hello"
+        assert body["frames_total"] >= 1
+        assert body["frames_processed"] >= 1
 
 
 class TestModelReload:

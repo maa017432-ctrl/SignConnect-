@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 
 from dotenv import load_dotenv
+from flasgger import Swagger
 from flask import Flask, jsonify, request
 from flask.wrappers import Response
 from flask_cors import CORS
@@ -16,6 +17,7 @@ from config import Config
 from core.ai_model import GestureClassifier
 from core.camera import CameraManager
 from core.gesture_detector import GestureDetector
+from core.logging_config import configure_logging
 from core.prediction_smoother import PredictionSmoother, SentenceBuilder
 from core.translator import Translator
 from core.tts_engine import TTSEngine
@@ -32,6 +34,60 @@ LOGGER = logging.getLogger(__name__)
 socketio = SocketIO()
 
 
+def _configure_api_docs(app: Flask) -> Swagger:
+    """Attach branded Swagger UI for public API exploration."""
+    swagger_template = {
+        "swagger": "2.0",
+        "info": {
+            "title": "SignConnect API",
+            "description": (
+                "Interactive API documentation for SignConnect's real-time "
+                "sign-language translation platform."
+            ),
+            "version": "1.0.0",
+            "contact": {
+                "name": "SignConnect",
+                "url": "https://github.com/venom010101/SignConnect",
+            },
+        },
+        "basePath": "/",
+        "schemes": ["http", "https"],
+        "consumes": ["application/json"],
+        "produces": ["application/json"],
+    }
+    swagger_config = {
+        "headers": [],
+        "title": "SignConnect API Docs",
+        "specs": [
+            {
+                "endpoint": "signconnect_openapi",
+                "route": "/api/docs/openapi.json",
+                "rule_filter": (
+                    lambda rule: rule.rule.startswith("/api")
+                    or rule.rule in ("/camera_frame", "/video_feed")
+                ),
+                "model_filter": lambda tag: True,
+            }
+        ],
+        "specs_route": "/api/docs",
+        "swagger_ui": True,
+        "favicon": "/static/icons/icon-192.png",
+        "top_text": """
+        <div class="sc-docs-hero">
+          <img src="/static/logo.svg" alt="SignConnect" class="sc-docs-logo">
+          <div class="sc-docs-copy">
+            <span class="sc-docs-kicker">Graduation Project • API Documentation</span>
+            <h1>SignConnect API</h1>
+            <p>Interactive docs for live translation, health monitoring, camera streaming, and speech synthesis.</p>
+          </div>
+        </div>
+        """,
+        "doc_expansion": "list",
+        "uiversion": 3,
+    }
+    return Swagger(app, config=swagger_config, template=swagger_template)
+
+
 def create_app() -> Flask:
     """Create and configure the Flask + SocketIO application instance."""
     env_path = Path(__file__).resolve().parent / ".env"
@@ -40,10 +96,7 @@ def create_app() -> Flask:
     app = Flask(__name__)
     app.config.from_object(Config())
 
-    logging.basicConfig(
-        level=getattr(logging, app.config["LOG_LEVEL"], logging.INFO),
-        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-    )
+    configure_logging(app.config["LOG_LEVEL"])
 
     # ── CORS: restrict to configured origins only (no wildcard) ──
     CORS(app, origins=app.config["ALLOWED_ORIGINS"], supports_credentials=True)
@@ -125,6 +178,7 @@ def create_app() -> Flask:
         camera_frame_response,
         methods=["GET"],
     )
+    _configure_api_docs(app)
 
     LOGGER.info("SignConnect started — JPEG preview: /camera_frame, /api/camera_frame")
 

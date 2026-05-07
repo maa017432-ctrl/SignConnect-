@@ -112,3 +112,8 @@ class Config:
         # Sentence builder
         self.SENTENCE_STABLE_FRAMES = int(os.getenv("SENTENCE_STABLE_FRAMES", "15"))
         self.SENTENCE_COOLDOWN_FRAMES = int(os.getenv("SENTENCE_COOLDOWN_FRAMES", "20"))
+
+        # Upload video fallback
+        self.VIDEO_UPLOAD_FRAME_STRIDE = max(
+            1, int(os.getenv("VIDEO_UPLOAD_FRAME_STRIDE", "2"))
+        )
