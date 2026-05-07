@@ -9,6 +9,7 @@ import time
 import csv
 import io
 from collections import Counter
+from datetime import datetime, timezone
 from pathlib import Path
 
 from flask import Blueprint, current_app, jsonify, request, session
@@ -611,9 +612,12 @@ def get_history() -> tuple[list[dict[str, str | float | None]], int]:
 
 
 @api_bp.get("/api/export_history")
-def export_history_csv() -> Response:
+def export_history_csv() -> Response | tuple[Response, int]:
     """Export current user's translation history as a downloadable CSV file."""
     user_id = session.get("user_id")
+    if user_id is None:
+        return jsonify({"error": "Unauthorized", "code": 401}), 401
+
     with get_connection(current_app.config["DATABASE_PATH"]) as connection:
         rows = connection.execute(
             """
@@ -640,7 +644,10 @@ def export_history_csv() -> Response:
 
     csv_body = buffer.getvalue()
     response = Response(csv_body, mimetype="text/csv")
-    response.headers["Content-Disposition"] = "attachment; filename=signconnect_history.csv"
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    response.headers["Content-Disposition"] = (
+        f"attachment; filename=signconnect_history_{user_id}_{timestamp}.csv"
+    )
     return response
 
 

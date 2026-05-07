@@ -114,10 +114,7 @@ def test_api_routes(client) -> None:
     assert payload is not None
     assert payload.get("camera_frame_route") is True
     assert client.get("/api/history").status_code == 200
-    export_response = client.get("/api/export_history")
-    assert export_response.status_code == 200
-    assert export_response.content_type.startswith("text/csv")
-    assert "attachment; filename=signconnect_history.csv" in export_response.headers.get("Content-Disposition", "")
+    assert client.get("/api/export_history").status_code == 401
     assert client.delete("/api/history").status_code == 200
 
 
@@ -165,10 +162,22 @@ def test_export_history_csv_scopes_rows_to_signed_in_user(client) -> None:
     response = client.get("/api/export_history")
     body = response.get_data(as_text=True)
     assert response.status_code == 200
+    content_disposition = response.headers.get("Content-Disposition", "")
+    assert content_disposition.startswith("attachment; filename=signconnect_history_")
+    assert content_disposition.endswith(".csv")
     assert body.startswith("gesture_label,confidence,audio_file,created_at")
     assert "Hello,0.91,hello.mp3," in body
     assert "Thanks,0.83,thanks.mp3," in body
     assert "Private,0.77,private.mp3," not in body
+
+
+def test_history_page_includes_download_history_csv_button(client) -> None:
+    """History page should expose a CSV download action in the UI."""
+    response = client.get("/history")
+    body = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert 'id="download-history-btn"' in body
+    assert "Download History CSV" in body
 
 
 def test_api_docs_routes(client) -> None:
