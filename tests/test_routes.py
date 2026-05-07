@@ -114,7 +114,61 @@ def test_api_routes(client) -> None:
     assert payload is not None
     assert payload.get("camera_frame_route") is True
     assert client.get("/api/history").status_code == 200
+    export_response = client.get("/api/export_history")
+    assert export_response.status_code == 200
+    assert export_response.content_type.startswith("text/csv")
+    assert "attachment; filename=signconnect_history.csv" in export_response.headers.get("Content-Disposition", "")
     assert client.delete("/api/history").status_code == 200
+
+
+def test_export_history_csv_scopes_rows_to_signed_in_user(client) -> None:
+    """CSV export should include only current user's translation history."""
+    from database.db import get_connection
+
+    db_path = client.application.config["DATABASE_PATH"]
+    email = "csv-export@example.com"
+    other_email = "csv-export-other@example.com"
+    with get_connection(db_path) as connection:
+        connection.execute(
+            "DELETE FROM translations WHERE user_id IN (SELECT id FROM users WHERE email IN (?, ?))",
+            (email, other_email),
+        )
+        connection.execute("DELETE FROM users WHERE email IN (?, ?)", (email, other_email))
+        user_id = connection.execute(
+            "INSERT INTO users (email, password_hash, full_name) VALUES (?, ?, ?)",
+            (email, "hash", "Csv User"),
+        ).lastrowid
+        other_user_id = connection.execute(
+            "INSERT INTO users (email, password_hash, full_name) VALUES (?, ?, ?)",
+            (other_email, "hash", "Other User"),
+        ).lastrowid
+        session_id = connection.execute(
+            "INSERT INTO sessions (ended_at) VALUES (NULL)"
+        ).lastrowid
+        connection.executemany(
+            """
+            INSERT INTO translations (session_id, user_id, gesture_label, confidence, audio_file)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            [
+                (session_id, user_id, "Hello", 0.91, "hello.mp3"),
+                (session_id, user_id, "Thanks", 0.83, "thanks.mp3"),
+                (session_id, other_user_id, "Private", 0.77, "private.mp3"),
+            ],
+        )
+
+    with client.session_transaction() as flask_session:
+        flask_session["user_id"] = user_id
+        flask_session["user_name"] = "Csv User"
+        flask_session["user_email"] = email
+
+    response = client.get("/api/export_history")
+    body = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert body.startswith("gesture_label,confidence,audio_file,created_at")
+    assert "Hello,0.91,hello.mp3," in body
+    assert "Thanks,0.83,thanks.mp3," in body
+    assert "Private,0.77,private.mp3," not in body
 
 
 def test_api_docs_routes(client) -> None:

@@ -6,6 +6,8 @@ import json
 import logging
 import tempfile
 import time
+import csv
+import io
 from collections import Counter
 from pathlib import Path
 
@@ -606,6 +608,40 @@ def get_history() -> tuple[list[dict[str, str | float | None]], int]:
         for row in rows
     ]
     return jsonify(payload), 200
+
+
+@api_bp.get("/api/export_history")
+def export_history_csv() -> Response:
+    """Export current user's translation history as a downloadable CSV file."""
+    user_id = session.get("user_id")
+    with get_connection(current_app.config["DATABASE_PATH"]) as connection:
+        rows = connection.execute(
+            """
+            SELECT gesture_label, confidence, audio_file, created_at
+            FROM translations
+            WHERE user_id = ?
+            ORDER BY id DESC
+            """,
+            (user_id,),
+        ).fetchall()
+
+    buffer = io.StringIO(newline="")
+    writer = csv.writer(buffer)
+    writer.writerow(["gesture_label", "confidence", "audio_file", "created_at"])
+    for row in rows:
+        writer.writerow(
+            [
+                row["gesture_label"],
+                row["confidence"],
+                row["audio_file"],
+                row["created_at"],
+            ]
+        )
+
+    csv_body = buffer.getvalue()
+    response = Response(csv_body, mimetype="text/csv")
+    response.headers["Content-Disposition"] = "attachment; filename=signconnect_history.csv"
+    return response
 
 
 @api_bp.get("/api/config")
