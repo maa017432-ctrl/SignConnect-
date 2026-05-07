@@ -103,7 +103,7 @@ def health() -> tuple[Response, int]:
     http_status = 200 if model_loaded else 503
     return jsonify(payload), http_status
 
-
+@api_bp.get("/api/camera_frame")
 def api_camera_frame() -> Response:
     """Same JPEG as ``/camera_frame``; use this URL if the root path is blocked or stale."""
     return camera_frame_response()
