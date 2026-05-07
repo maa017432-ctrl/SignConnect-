@@ -26,6 +26,10 @@
   const autoSpeakBtn = document.getElementById("auto-speak-btn");
   const refreshHistBtn = document.getElementById("refresh-history-btn");
   const clearHistBtn = document.getElementById("clear-history-btn");
+  const uploadVideoBtn = document.getElementById("upload-video-btn");
+  const uploadVideoInput = document.getElementById("upload-video-input");
+  const uploadVideoStatus = document.getElementById("upload-video-status");
+  const uploadVideoProgress = document.getElementById("upload-video-progress");
   const langSelect = document.getElementById("lang-select");
   const thresholdSlider = document.getElementById("threshold-slider");
   const thresholdVal = document.getElementById("threshold-val");
@@ -1370,6 +1374,91 @@
     refreshHistoryPage();
   }
 
+  function setUploadStatus(message, isError = false) {
+    if (!uploadVideoStatus) return;
+    uploadVideoStatus.textContent = message || "";
+    uploadVideoStatus.style.color = isError ? "var(--color-danger, #ef4444)" : "var(--text-secondary)";
+  }
+
+  function resetUploadProgress() {
+    if (!uploadVideoProgress) return;
+    uploadVideoProgress.value = 0;
+    uploadVideoProgress.style.display = "none";
+  }
+
+  function uploadVideoFile(file) {
+    if (!file) return;
+    if (!/\.mp4$/i.test(file.name || "")) {
+      setUploadStatus("Please select an MP4 file.", true);
+      return;
+    }
+
+    pauseStream();
+    showOverlay("Processing uploaded video…");
+    setUploadStatus("Uploading video for analysis...");
+    if (uploadVideoBtn) uploadVideoBtn.disabled = true;
+    if (pauseBtn) pauseBtn.disabled = true;
+    if (uploadVideoProgress) {
+      uploadVideoProgress.style.display = "block";
+      uploadVideoProgress.value = 0;
+    }
+
+    const formData = new FormData();
+    formData.append("video", file);
+
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/upload_video");
+
+    xhr.upload.onprogress = (event) => {
+      if (!uploadVideoProgress || !event.lengthComputable) return;
+      const pct = Math.max(0, Math.min(100, Math.round((event.loaded / event.total) * 100)));
+      uploadVideoProgress.value = pct;
+      setUploadStatus(`Uploading... ${pct}%`);
+    };
+
+    xhr.onload = () => {
+      let payload = {};
+      try { payload = JSON.parse(xhr.responseText || "{}"); } catch { }
+
+      if (xhr.status !== 200) {
+        setUploadStatus(payload.error || "Video upload failed.", true);
+        showOverlay("Upload failed");
+        if (uploadVideoBtn) uploadVideoBtn.disabled = false;
+        if (pauseBtn) pauseBtn.disabled = false;
+        resetUploadProgress();
+        return;
+      }
+
+      const text = String(payload.translation_text || "").trim();
+      const topGesture = String(payload.top_gesture || "");
+      const avg = Number(payload.average_confidence || 0);
+
+      if (recognizedText) recognizedText.textContent = topGesture || "—";
+      updateConfidence(avg);
+      updateSentenceDisplay(text);
+      updateProgressBar(0, 15, false);
+
+      const summary = text
+        ? `Video processed (${payload.frames_processed || 0} frames). Translation: ${text}`
+        : `Video processed (${payload.frames_processed || 0} frames). No strong gesture detected.`;
+      setUploadStatus(summary, false);
+      showOverlay("Upload complete — press Resume to return to live camera");
+      if (uploadVideoBtn) uploadVideoBtn.disabled = false;
+      if (pauseBtn) pauseBtn.disabled = false;
+      resetUploadProgress();
+    };
+
+    xhr.onerror = () => {
+      setUploadStatus("Network error while uploading video.", true);
+      showOverlay("Upload failed");
+      if (uploadVideoBtn) uploadVideoBtn.disabled = false;
+      if (pauseBtn) pauseBtn.disabled = false;
+      resetUploadProgress();
+    };
+
+    xhr.send(formData);
+  }
+
   /* ── History (translator sidebar) ────────────────────────── */
   async function refreshHistorySidebar() {
     if (!historyList) return;
@@ -1576,6 +1665,14 @@
     if (clearBtn) clearBtn.addEventListener("click", clearSentence);
     if (refreshHistBtn) refreshHistBtn.addEventListener("click", refreshHistoryPage);
     if (clearHistBtn) clearHistBtn.addEventListener("click", clearHistory);
+    if (uploadVideoBtn && uploadVideoInput) {
+      uploadVideoBtn.addEventListener("click", () => uploadVideoInput.click());
+      uploadVideoInput.addEventListener("change", () => {
+        const file = uploadVideoInput.files && uploadVideoInput.files[0];
+        uploadVideoFile(file);
+        uploadVideoInput.value = "";
+      });
+    }
 
     // Practice mode listeners
     if (practiceBtn) practiceBtn.addEventListener("click", togglePracticeMode);

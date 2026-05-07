@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import json
 import logging
+import tempfile
 import time
+from collections import Counter
 from pathlib import Path
 
 from flask import Blueprint, current_app, jsonify, request, session
 from flask.wrappers import Response
 
 from core.logging_config import get_uptime_seconds
+from core.prediction_smoother import PredictionSmoother, SentenceBuilder
 from database.db import get_connection
 from routes.stream import _prediction_lock, camera_frame_response
 
@@ -19,11 +22,17 @@ try:
 except ImportError:  # pragma: no cover
     _psutil = None  # type: ignore[assignment]
 
+try:
+    import cv2
+except ImportError:  # pragma: no cover
+    cv2 = None  # type: ignore[assignment]
+
 
 LOGGER = logging.getLogger(__name__)
 api_bp = Blueprint("api", __name__)
 
 _MAX_TEXT_LEN = 500
+_MAX_VIDEO_UPLOAD_BYTES = 100 * 1024 * 1024
 
 
 def _api_key_ok() -> bool:
@@ -322,6 +331,153 @@ def tts() -> tuple[dict[str, str | int], int]:
         return jsonify({"error": "TTS unavailable or synthesis failed", "code": 503}), 503
 
     return jsonify({"audio_url": f"/static/audio/{filename}"}), 200
+
+
+@api_bp.post("/api/upload_video")
+def upload_video() -> tuple[dict[str, object], int]:
+    """Process an uploaded MP4 file frame-by-frame and return aggregated text.
+    ---
+    tags:
+      - Translation
+    summary: Upload and translate a pre-recorded video
+    consumes:
+      - multipart/form-data
+    parameters:
+      - in: formData
+        name: video
+        type: file
+        required: true
+        description: MP4 video file containing sign gestures.
+    responses:
+      200:
+        description: Video processed successfully.
+      400:
+        description: Missing or invalid upload.
+      503:
+        description: OpenCV backend unavailable.
+    """
+    if cv2 is None:
+        return jsonify({"error": "Video processing unavailable", "code": 503}), 503
+
+    upload = request.files.get("video")
+    if upload is None or not upload.filename:
+        return jsonify({"error": "Missing video file", "code": 400}), 400
+
+    if Path(upload.filename).suffix.lower() != ".mp4":
+        return jsonify({"error": "Only MP4 uploads are supported", "code": 400}), 400
+
+    upload.stream.seek(0, 2)
+    size_bytes = int(upload.stream.tell() or 0)
+    upload.stream.seek(0)
+    if size_bytes <= 0:
+        return jsonify({"error": "Uploaded video is empty", "code": 400}), 400
+    if size_bytes > _MAX_VIDEO_UPLOAD_BYTES:
+        return jsonify({"error": "Video file is too large", "code": 400}), 400
+
+    tmp_path: str | None = None
+    capture = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb", suffix=".mp4", prefix="signconnect_upload_", dir="/tmp", delete=False
+        ) as tmp_file:
+            upload.save(tmp_file)
+            tmp_path = tmp_file.name
+
+        capture = cv2.VideoCapture(tmp_path)
+        if not capture.isOpened():
+            return jsonify({"error": "Could not open uploaded video", "code": 400}), 400
+
+        gesture_detector = current_app.extensions["gesture_detector"]
+        classifier = current_app.extensions["classifier"]
+        translator = current_app.extensions["translator"]
+        smoother = PredictionSmoother(
+            window=current_app.config.get("SMOOTHER_WINDOW", 10),
+            min_fraction=current_app.config.get("SMOOTHER_MIN_FRACTION", 0.6),
+        )
+        sentence_builder = SentenceBuilder(
+            stable_frames=current_app.config.get("SENTENCE_STABLE_FRAMES", 15),
+            cooldown_frames=current_app.config.get("SENTENCE_COOLDOWN_FRAMES", 20),
+        )
+
+        if hasattr(classifier, "reset_sequence"):
+            classifier.reset_sequence()
+
+        frame_index = 0
+        processed_frames = 0
+        sampled_frames = 0
+        frame_stride = 2
+        label_counter: Counter[str] = Counter()
+        confidence_sum = 0.0
+        confidence_count = 0
+
+        while True:
+            ok, frame = capture.read()
+            if not ok:
+                break
+
+            frame_index += 1
+            if frame_index % frame_stride != 0:
+                continue
+
+            sampled_frames += 1
+            _, landmarks = gesture_detector.detect(frame)
+            if landmarks is None:
+                if hasattr(classifier, "reset_sequence"):
+                    classifier.reset_sequence()
+                smoother.update(None, 0.0)
+                sentence_builder.update(None)
+                continue
+
+            processed_frames += 1
+            details = classifier.predict_with_details(landmarks)
+            confidence = float(details.get("confidence", 0.0))
+            label_index = int(details.get("label_index", -1))
+            raw_label = translator.get_label(label_index) if label_index >= 0 else None
+            smoothed_label, _ = smoother.update(raw_label, confidence)
+            sentence_builder.update(smoothed_label)
+
+            if smoothed_label:
+                label_counter[smoothed_label] += 1
+                confidence_sum += confidence
+                confidence_count += 1
+
+        if hasattr(classifier, "reset_sequence"):
+            classifier.reset_sequence()
+
+        translation_text = sentence_builder.sentence.strip()
+        top_gesture = label_counter.most_common(1)[0][0] if label_counter else ""
+        if not translation_text and top_gesture:
+            translation_text = top_gesture
+
+        average_confidence = (confidence_sum / confidence_count) if confidence_count else 0.0
+        return (
+            jsonify(
+                {
+                    "translation_text": translation_text,
+                    "top_gesture": top_gesture,
+                    "frames_total": frame_index,
+                    "frames_sampled": sampled_frames,
+                    "frames_processed": processed_frames,
+                    "average_confidence": round(average_confidence, 4),
+                    "average_confidence_pct": round(average_confidence * 100, 1),
+                }
+            ),
+            200,
+        )
+    except Exception:
+        LOGGER.exception("Failed to process uploaded video")
+        return jsonify({"error": "Video processing failed", "code": 500}), 500
+    finally:
+        try:
+            if capture is not None:
+                capture.release()
+        except Exception:
+            LOGGER.debug("Failed to release video capture", exc_info=True)
+        if tmp_path:
+            try:
+                Path(tmp_path).unlink(missing_ok=True)
+            except OSError:
+                LOGGER.debug("Failed to remove temp upload file: %s", tmp_path, exc_info=True)
 
 
 @api_bp.post("/api/translate")
