@@ -1388,6 +1388,10 @@
 
   function uploadVideoFile(file) {
     if (!file) return;
+    if (file.type && file.type !== "video/mp4") {
+      setUploadStatus("Please upload an MP4 video file.", true);
+      return;
+    }
     if (!/\.mp4$/i.test(file.name || "")) {
       setUploadStatus("Please select an MP4 file.", true);
       return;
@@ -1411,6 +1415,7 @@
 
     xhr.upload.onprogress = (event) => {
       if (!uploadVideoProgress || !event.lengthComputable) return;
+      if (event.total === 0) return;
       const pct = Math.max(0, Math.min(100, Math.round((event.loaded / event.total) * 100)));
       uploadVideoProgress.value = pct;
       setUploadStatus(`Uploading... ${pct}%`);

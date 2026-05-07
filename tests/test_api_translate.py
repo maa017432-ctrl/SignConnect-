@@ -280,6 +280,16 @@ class TestVideoUploadApi:
         )
         assert res.status_code == 400
 
+    def test_upload_video_rejects_misplaced_ftyp_signature(self, client) -> None:
+        import io
+
+        res = client.post(
+            "/api/upload_video",
+            data={"video": (io.BytesIO(b"xxxxxxftypmp42"), "demo.mp4")},
+            content_type="multipart/form-data",
+        )
+        assert res.status_code == 400
+
     def test_upload_video_happy_path(self, client, app) -> None:
         import io
         import routes.api as api_routes

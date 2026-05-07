@@ -46,7 +46,7 @@ def _looks_like_mp4(upload) -> bool:
         return False
     if len(header) < 12:
         return False
-    return b"ftyp" in header[4:32]
+    return header[4:8] == b"ftyp"
 
 
 def _api_key_ok() -> bool:
@@ -421,7 +421,7 @@ def upload_video() -> tuple[dict[str, object], int]:
         frame_index = 0
         processed_frames = 0
         sampled_frames = 0
-        frame_stride = max(1, int(current_app.config.get("VIDEO_UPLOAD_FRAME_STRIDE", 2)))
+        frame_stride = max(1, int(current_app.config.get("VIDEO_UPLOAD_FRAME_STRIDE")))
         label_counter: Counter[str] = Counter()
         confidence_sum = 0.0
         confidence_count = 0
