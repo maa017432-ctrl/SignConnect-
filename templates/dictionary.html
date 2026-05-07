@@ -16,7 +16,7 @@
         <p class="sc-page-subtitle">Browse all {{ labels|length }} signs currently supported by the model vocabulary</p>
       </div>
       <div class="sc-page-actions">
-        <span class="sc-badge">{{ labels|length }} signs ({{ "label map" if labels_source == "label_map" else "config fallback" }})</span>
+        <span class="sc-badge">{{ labels|length }} signs ({{ "label map" if not labels_from_config else "config fallback" }})</span>
       </div>
     </div>
 

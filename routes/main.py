@@ -19,6 +19,9 @@ from database.db import get_connection
 
 
 main_bp = Blueprint("main", __name__)
+_LABEL_SOURCE_MAP = "label_map"
+_LABEL_SOURCE_CONFIG = "config"
+_FALLBACK_LABEL_PREFIX = "Class"
 
 
 def _user_ctx() -> dict:
@@ -38,14 +41,14 @@ def _supported_dictionary_labels() -> tuple[list[str], str]:
     translator_ext = current_app.extensions.get("translator")
     labels = translator_ext.get_all_labels() if translator_ext else []
     if labels:
-        return labels, "label_map"
+        return labels, _LABEL_SOURCE_MAP
 
     classifier = current_app.extensions.get("classifier")
     labels_count = int(
         getattr(classifier, "labels_count", 0) or current_app.config.get("LABELS_COUNT", 0)
     )
-    fallback = [f"Class {idx}" for idx in range(1, labels_count + 1)]
-    return fallback, "config"
+    fallback = [f"{_FALLBACK_LABEL_PREFIX} {idx}" for idx in range(1, labels_count + 1)]
+    return fallback, _LABEL_SOURCE_CONFIG
 
 
 def _translations_over_time(connection, days: int = 7) -> tuple[list[str], list[int]]:
@@ -122,7 +125,11 @@ def dictionary() -> str:
     """Render the gesture dictionary page."""
     labels, labels_source = _supported_dictionary_labels()
     return render_template(
-        "dictionary.html", labels=labels, labels_source=labels_source, **_user_ctx()
+        "dictionary.html",
+        labels=labels,
+        labels_source=labels_source,
+        labels_from_config=(labels_source == _LABEL_SOURCE_CONFIG),
+        **_user_ctx(),
     )
 
 
