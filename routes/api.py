@@ -421,7 +421,8 @@ def upload_video() -> tuple[dict[str, object], int]:
         frame_index = 0
         processed_frames = 0
         sampled_frames = 0
-        frame_stride = max(1, int(current_app.config.get("VIDEO_UPLOAD_FRAME_STRIDE")))
+        configured_stride = current_app.config.get("VIDEO_UPLOAD_FRAME_STRIDE")
+        frame_stride = max(1, int(2 if configured_stride is None else configured_stride))
         label_counter: Counter[str] = Counter()
         confidence_sum = 0.0
         confidence_count = 0
