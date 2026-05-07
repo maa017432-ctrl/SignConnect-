@@ -270,6 +270,16 @@ class TestVideoUploadApi:
         )
         assert res.status_code == 400
 
+    def test_upload_video_rejects_invalid_mp4_content(self, client) -> None:
+        import io
+
+        res = client.post(
+            "/api/upload_video",
+            data={"video": (io.BytesIO(b"not a real mp4"), "demo.mp4")},
+            content_type="multipart/form-data",
+        )
+        assert res.status_code == 400
+
     def test_upload_video_happy_path(self, client, app) -> None:
         import io
         import routes.api as api_routes
@@ -309,7 +319,12 @@ class TestVideoUploadApi:
         ):
             res = client.post(
                 "/api/upload_video",
-                data={"video": (io.BytesIO(b"fake mp4 bytes"), "demo.mp4")},
+                data={
+                    "video": (
+                        io.BytesIO(b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42"),
+                        "demo.mp4",
+                    )
+                },
                 content_type="multipart/form-data",
             )
 

@@ -35,6 +35,20 @@ _MAX_TEXT_LEN = 500
 _MAX_VIDEO_UPLOAD_BYTES = 100 * 1024 * 1024
 
 
+def _looks_like_mp4(upload) -> bool:
+    """Best-effort MP4 signature check based on ISO BMFF `ftyp` box."""
+    try:
+        stream = upload.stream
+        pos = stream.tell()
+        header = stream.read(64) or b""
+        stream.seek(pos)
+    except Exception:
+        return False
+    if len(header) < 12:
+        return False
+    return b"ftyp" in header[4:32]
+
+
 def _api_key_ok() -> bool:
     """Return True if the request carries a valid API key, or if no key is configured."""
     if current_app.config.get("DEBUG", False):
@@ -365,6 +379,8 @@ def upload_video() -> tuple[dict[str, object], int]:
 
     if Path(upload.filename).suffix.lower() != ".mp4":
         return jsonify({"error": "Only MP4 uploads are supported", "code": 400}), 400
+    if not _looks_like_mp4(upload):
+        return jsonify({"error": "Uploaded file is not a valid MP4", "code": 400}), 400
 
     upload.stream.seek(0, 2)
     size_bytes = int(upload.stream.tell() or 0)
@@ -378,7 +394,7 @@ def upload_video() -> tuple[dict[str, object], int]:
     capture = None
     try:
         with tempfile.NamedTemporaryFile(
-            mode="wb", suffix=".mp4", prefix="signconnect_upload_", dir="/tmp", delete=False
+            mode="wb", suffix=".mp4", prefix="signconnect_upload_", delete=False
         ) as tmp_file:
             upload.save(tmp_file)
             tmp_path = tmp_file.name
@@ -405,7 +421,7 @@ def upload_video() -> tuple[dict[str, object], int]:
         frame_index = 0
         processed_frames = 0
         sampled_frames = 0
-        frame_stride = 2
+        frame_stride = max(1, int(current_app.config.get("VIDEO_UPLOAD_FRAME_STRIDE", 2)))
         label_counter: Counter[str] = Counter()
         confidence_sum = 0.0
         confidence_count = 0
