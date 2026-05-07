@@ -38,7 +38,41 @@ def _api_key_ok() -> bool:
 
 @api_bp.get("/api/status")
 def status() -> tuple[dict[str, object], int]:
-    """Return runtime health status for core services."""
+    """Return runtime health status for core services.
+    ---
+    tags:
+      - Runtime
+    summary: Inspect core runtime dependencies
+    description: Reports whether the camera, model, TTS engine, and MediaPipe pipeline are currently available.
+    responses:
+      200:
+        description: Current runtime status snapshot.
+        schema:
+          type: object
+          properties:
+            camera:
+              type: boolean
+            model:
+              type: boolean
+            model_demo_mode:
+              type: boolean
+            model_type:
+              type: string
+            model_input_dim:
+              type: integer
+            sequence_length:
+              type: integer
+            label_count:
+              type: integer
+            norm_stats_loaded:
+              type: boolean
+            tts:
+              type: boolean
+            mediapipe:
+              type: boolean
+            camera_frame_route:
+              type: boolean
+    """
     camera_manager = current_app.extensions["camera_manager"]
     classifier = current_app.extensions["classifier"]
     tts_engine = current_app.extensions["tts_engine"]
@@ -75,6 +109,25 @@ def health() -> tuple[Response, int]:
     operational, or HTTP 503 when the model is unavailable.  Memory metrics
     are included when ``psutil`` is installed; if it is absent the ``memory``
     key is omitted rather than causing a hard error.
+    ---
+    tags:
+      - Runtime
+    summary: Health probe for operations and deployment
+    responses:
+      200:
+        description: Application is healthy.
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              example: ok
+            uptime_seconds:
+              type: number
+            model_loaded:
+              type: boolean
+      503:
+        description: Application is running in degraded mode because the model is unavailable.
     """
     classifier = current_app.extensions.get("classifier")
     model_loaded: bool = bool(classifier and classifier.is_available)
@@ -105,13 +158,62 @@ def health() -> tuple[Response, int]:
 
 @api_bp.get("/api/camera_frame")
 def api_camera_frame() -> Response:
-    """Same JPEG as ``/camera_frame``; use this URL if the root path is blocked or stale."""
+    """Return a single annotated JPEG camera frame.
+    ---
+    tags:
+      - Streaming
+    summary: Fetch one JPEG frame snapshot
+    produces:
+      - image/jpeg
+    responses:
+      200:
+        description: JPEG snapshot for polling-based preview clients.
+        schema:
+          type: string
+          format: binary
+    """
     return camera_frame_response()
 
 
 @api_bp.get("/api/prediction")
 def latest_prediction() -> tuple[dict[str, object], int]:
-    """Return current gesture prediction, smoothed label, and sentence state."""
+    """Return current gesture prediction, smoothed label, and sentence state.
+    ---
+    tags:
+      - Runtime
+    summary: Read the latest prediction payload
+    responses:
+      200:
+        description: Current prediction and sentence-builder state.
+        schema:
+          type: object
+          properties:
+            label:
+              type: string
+              nullable: true
+            confidence:
+              type: number
+            smoothed_label:
+              type: string
+              nullable: true
+            top_candidates:
+              type: array
+              items:
+                type: object
+            sentence:
+              type: string
+            current_run:
+              type: integer
+            stable_frames:
+              type: integer
+            is_cooling_down:
+              type: boolean
+            model_type:
+              type: string
+            inference_ms:
+              type: number
+              nullable: true
+    """
     with _prediction_lock:
         payload = dict(current_app.extensions.get("latest_prediction") or {})
     builder = current_app.extensions.get("sentence_builder")
@@ -165,6 +267,39 @@ def tts() -> tuple[dict[str, str | int], int]:
     This lightweight endpoint is used by the auto-speak feature to speak each
     committed word without polluting the translation history.  Use
     ``POST /api/translate`` instead when a history entry is also desired.
+    ---
+    tags:
+      - Speech
+    summary: Generate speech audio without saving history
+    consumes:
+      - application/json
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          required:
+            - text
+          properties:
+            text:
+              type: string
+              example: Hello world
+            lang:
+              type: string
+              example: en
+    responses:
+      200:
+        description: Audio was generated successfully.
+        schema:
+          type: object
+          properties:
+            audio_url:
+              type: string
+      400:
+        description: Invalid or missing request body.
+      503:
+        description: Speech synthesis backend is unavailable.
     """
     payload = request.get_json(silent=True) or {}
     text = str(payload.get("text", "")).strip()
@@ -191,7 +326,41 @@ def tts() -> tuple[dict[str, str | int], int]:
 
 @api_bp.post("/api/translate")
 def translate() -> tuple[dict[str, str | int], int]:
-    """Convert input text to speech and return audio URL."""
+    """Convert input text to speech, save history, and return an audio URL.
+    ---
+    tags:
+      - Speech
+    summary: Generate speech audio and persist a translation history row
+    consumes:
+      - application/json
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          required:
+            - text
+          properties:
+            text:
+              type: string
+              example: Thank you
+            lang:
+              type: string
+              example: en
+    responses:
+      200:
+        description: Audio URL returned successfully.
+        schema:
+          type: object
+          properties:
+            audio_url:
+              type: string
+      400:
+        description: Invalid or missing request body.
+      503:
+        description: Speech synthesis backend is unavailable.
+    """
     payload = request.get_json(silent=True) or {}
     text = str(payload.get("text", "")).strip()
     if not text:

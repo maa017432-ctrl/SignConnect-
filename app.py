@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 
 from dotenv import load_dotenv
+from flasgger import Swagger
 from flask import Flask, jsonify, request
 from flask.wrappers import Response
 from flask_cors import CORS
@@ -31,6 +32,60 @@ LOGGER = logging.getLogger(__name__)
 
 # Module-level SocketIO instance so routes/stream.py can import it directly.
 socketio = SocketIO()
+
+
+def _configure_api_docs(app: Flask) -> Swagger:
+    """Attach branded Swagger UI for public API exploration."""
+    swagger_template = {
+        "swagger": "2.0",
+        "info": {
+            "title": "SignConnect API",
+            "description": (
+                "Interactive API documentation for SignConnect's real-time "
+                "sign-language translation platform."
+            ),
+            "version": "1.0.0",
+            "contact": {
+                "name": "SignConnect",
+                "url": "https://github.com/venom010101/SignConnect",
+            },
+        },
+        "basePath": "/",
+        "schemes": ["http", "https"],
+        "consumes": ["application/json"],
+        "produces": ["application/json"],
+    }
+    swagger_config = {
+        "headers": [],
+        "title": "SignConnect API Docs",
+        "specs": [
+            {
+                "endpoint": "signconnect_openapi",
+                "route": "/api/docs/openapi.json",
+                "rule_filter": (
+                    lambda rule: rule.rule.startswith("/api")
+                    or rule.rule in ("/camera_frame", "/video_feed")
+                ),
+                "model_filter": lambda tag: True,
+            }
+        ],
+        "specs_route": "/api/docs",
+        "swagger_ui": True,
+        "favicon": "/static/icons/icon-192.png",
+        "top_text": """
+        <div class="sc-docs-hero">
+          <img src="/static/logo.svg" alt="SignConnect" class="sc-docs-logo">
+          <div class="sc-docs-copy">
+            <span class="sc-docs-kicker">Graduation Project • API Documentation</span>
+            <h1>SignConnect API</h1>
+            <p>Interactive docs for live translation, health monitoring, camera streaming, and speech synthesis.</p>
+          </div>
+        </div>
+        """,
+        "doc_expansion": "list",
+        "uiversion": 3,
+    }
+    return Swagger(app, config=swagger_config, template=swagger_template)
 
 
 def create_app() -> Flask:
@@ -123,6 +178,7 @@ def create_app() -> Flask:
         camera_frame_response,
         methods=["GET"],
     )
+    _configure_api_docs(app)
 
     LOGGER.info("SignConnect started — JPEG preview: /camera_frame, /api/camera_frame")
 

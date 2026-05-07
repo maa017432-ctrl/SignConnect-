@@ -59,6 +59,8 @@ To run staged tier training end-to-end:
 
 ## API Documentation
 
+Interactive Swagger UI is available at `/api/docs`.
+
 | Method | Endpoint | Description |
 |---|---|---|
 | GET | `/api/status` | Service health — camera, model, TTS state |

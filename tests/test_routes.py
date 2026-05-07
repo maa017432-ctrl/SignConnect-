@@ -37,6 +37,22 @@ def test_api_routes(client) -> None:
     assert client.delete("/api/history").status_code == 200
 
 
+def test_api_docs_routes(client) -> None:
+    """Swagger UI and OpenAPI spec should be exposed for presentation/demo use."""
+    docs_response = client.get("/api/docs")
+    assert docs_response.status_code == 200
+    assert "SignConnect API Docs" in docs_response.get_data(as_text=True)
+
+    spec_response = client.get("/api/docs/openapi.json")
+    assert spec_response.status_code == 200
+    spec = spec_response.get_json()
+    assert spec is not None
+    assert spec["info"]["title"] == "SignConnect API"
+    assert "/api/status" in spec["paths"]
+    assert "/api/camera_frame" in spec["paths"]
+    assert "/video_feed" in spec["paths"]
+
+
 def test_health_endpoint(client) -> None:
     """Health endpoint should return JSON with required fields."""
     response = client.get("/api/health")
