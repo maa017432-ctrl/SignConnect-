@@ -100,6 +100,7 @@
   let autoSpeak = localStorage.getItem(AUTO_SPEAK_STORAGE_KEY) === "1";
   let _prevSentenceWordCount = 0;  // tracks word count to detect new commits
   let _autoSpeakInFlight = false;  // prevents overlapping TTS requests
+  let _activeAudio = null;
 
   function _applyAutoSpeakButton() {
     if (!autoSpeakBtn) return;
@@ -117,7 +118,24 @@
   function toggleAutoSpeak() {
     autoSpeak = !autoSpeak;
     localStorage.setItem(AUTO_SPEAK_STORAGE_KEY, autoSpeak ? "1" : "0");
+    if (!autoSpeak && _activeAudio) {
+      _activeAudio.pause();
+      _activeAudio.currentTime = 0;
+    }
     _applyAutoSpeakButton();
+  }
+
+  function playAudioUrl(audioUrl) {
+    if (!audioUrl) return;
+    if (_activeAudio) {
+      _activeAudio.pause();
+      _activeAudio.currentTime = 0;
+    }
+    _activeAudio = new Audio(audioUrl);
+    _activeAudio.addEventListener("ended", () => {
+      if (_activeAudio && _activeAudio.src === audioUrl) _activeAudio = null;
+    }, { once: true });
+    _activeAudio.play().catch(() => { });
   }
 
   async function _autoSpeakSentence(sentence) {
@@ -131,7 +149,7 @@
       });
       if (!res.ok) return;
       const data = await res.json();
-      if (data.audio_url) new Audio(data.audio_url).play().catch(() => { });
+      playAudioUrl(data.audio_url);
     } catch { /* network/playback errors are non-fatal */ }
     finally { _autoSpeakInFlight = false; }
   }
@@ -1298,7 +1316,7 @@
       });
       if (!res.ok) return;
       const data = await res.json();
-      if (data.audio_url) new Audio(data.audio_url).play().catch(() => { });
+      playAudioUrl(data.audio_url);
       refreshHistorySidebar();
     } catch { /* ignore */ }
   }
