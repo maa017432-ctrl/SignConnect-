@@ -26,6 +26,36 @@ def test_main_routes(client) -> None:
     assert client.get("/dictionary").status_code == 200
 
 
+def test_dictionary_page_renders_searchable_supported_signs(client) -> None:
+    """Dictionary page should show educational searchable glossary UI."""
+    response = client.get("/dictionary")
+    body = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert "Supported Signs Dictionary" in body
+    assert 'id="dict-search"' in body
+    assert "Showing " in body
+
+
+def test_dictionary_uses_config_fallback_when_label_map_is_empty(client) -> None:
+    """When no labels exist in the map, dictionary should fall back to configured classes."""
+    translator = client.application.extensions["translator"]
+    classifier = client.application.extensions["classifier"]
+    original_label_map = dict(translator.label_map)
+    original_labels_count = classifier.labels_count
+    try:
+        translator.label_map = {}
+        classifier.labels_count = 3
+        response = client.get("/dictionary")
+        body = response.get_data(as_text=True)
+        assert response.status_code == 200
+        assert "Class 1" in body
+        assert "Class 3" in body
+        assert "config fallback" in body
+    finally:
+        translator.label_map = original_label_map
+        classifier.labels_count = original_labels_count
+
+
 def test_admin_route_requires_authentication(client) -> None:
     """Admin dashboard should redirect guests to sign-in."""
     response = client.get("/admin", follow_redirects=False)

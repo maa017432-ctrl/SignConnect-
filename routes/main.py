@@ -33,6 +33,21 @@ def _user_ctx() -> dict:
     }
 
 
+def _supported_dictionary_labels() -> tuple[list[str], str]:
+    """Return supported labels and the source used to build the list."""
+    translator_ext = current_app.extensions.get("translator")
+    labels = translator_ext.get_all_labels() if translator_ext else []
+    if labels:
+        return labels, "label_map"
+
+    classifier = current_app.extensions.get("classifier")
+    labels_count = int(
+        getattr(classifier, "labels_count", 0) or current_app.config.get("LABELS_COUNT", 0)
+    )
+    fallback = [f"Class {idx}" for idx in range(1, labels_count + 1)]
+    return fallback, "config"
+
+
 def _translations_over_time(connection, days: int = 7) -> tuple[list[str], list[int]]:
     start_date = date.today() - timedelta(days=days - 1)
     rows = connection.execute(
@@ -105,9 +120,10 @@ def history() -> str:
 @main_bp.get("/dictionary")
 def dictionary() -> str:
     """Render the gesture dictionary page."""
-    translator_ext = current_app.extensions["translator"]
-    labels = translator_ext.get_all_labels()
-    return render_template("dictionary.html", labels=labels, **_user_ctx())
+    labels, labels_source = _supported_dictionary_labels()
+    return render_template(
+        "dictionary.html", labels=labels, labels_source=labels_source, **_user_ctx()
+    )
 
 
 @main_bp.get("/settings")
