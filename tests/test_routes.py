@@ -26,6 +26,56 @@ def test_main_routes(client) -> None:
     assert client.get("/dictionary").status_code == 200
 
 
+def test_admin_route_requires_authentication(client) -> None:
+    """Admin dashboard should redirect guests to sign-in."""
+    response = client.get("/admin", follow_redirects=False)
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/signin")
+
+
+def test_admin_dashboard_renders_for_signed_in_user(client) -> None:
+    """Signed-in users should see dashboard metrics and charts."""
+    from database.db import get_connection
+
+    db_path = client.application.config["DATABASE_PATH"]
+    email = "admin-dashboard@example.com"
+    with get_connection(db_path) as connection:
+        connection.execute("DELETE FROM translations WHERE user_id IN (SELECT id FROM users WHERE email = ?)", (email,))
+        connection.execute("DELETE FROM users WHERE email = ?", (email,))
+        cursor = connection.execute(
+            "INSERT INTO users (email, password_hash, full_name) VALUES (?, ?, ?)",
+            (email, "hash", "Admin User"),
+        )
+        user_id = cursor.lastrowid
+        session_id = connection.execute(
+            "INSERT INTO sessions (ended_at) VALUES (NULL)"
+        ).lastrowid
+        connection.executemany(
+            """
+            INSERT INTO translations (session_id, user_id, gesture_label, confidence, audio_file)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            [
+                (session_id, user_id, "Hello", 0.92, "hello.mp3"),
+                (session_id, user_id, "Thank You", 0.88, "thanks.mp3"),
+                (session_id, user_id, "Hello", 0.95, "hello2.mp3"),
+            ],
+        )
+
+    with client.session_transaction() as flask_session:
+        flask_session["user_id"] = user_id
+        flask_session["user_name"] = "Admin User"
+        flask_session["user_email"] = email
+
+    response = client.get("/admin")
+    body = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert "Admin Dashboard" in body
+    assert "Total Translations" in body
+    assert "Most Common Gestures" in body
+    assert "Hello" in body
+
+
 def test_api_routes(client) -> None:
     """Ensure API routes return expected statuses."""
     status_response = client.get("/api/status")

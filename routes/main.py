@@ -2,7 +2,17 @@
 
 from __future__ import annotations
 
-from flask import Blueprint, current_app, render_template, send_from_directory, session
+from datetime import date, timedelta
+
+from flask import (
+    Blueprint,
+    current_app,
+    redirect,
+    render_template,
+    send_from_directory,
+    session,
+    url_for,
+)
 from flask.wrappers import Response
 
 from database.db import get_connection
@@ -21,6 +31,30 @@ def _user_ctx() -> dict:
             "is_authenticated": bool(session.get("user_id")),
         }
     }
+
+
+def _translations_over_time(connection, days: int = 7) -> tuple[list[str], list[int]]:
+    start_date = date.today() - timedelta(days=days - 1)
+    rows = connection.execute(
+        """
+        SELECT DATE(created_at) AS day, COUNT(*) AS total
+        FROM translations
+        WHERE DATE(created_at) >= ?
+        GROUP BY DATE(created_at)
+        ORDER BY DATE(created_at)
+        """,
+        (start_date.isoformat(),),
+    ).fetchall()
+    totals_by_day = {row["day"]: int(row["total"]) for row in rows}
+
+    labels: list[str] = []
+    values: list[int] = []
+    for offset in range(days):
+        day = start_date + timedelta(days=offset)
+        key = day.isoformat()
+        labels.append(day.strftime("%b %d"))
+        values.append(totals_by_day.get(key, 0))
+    return labels, values
 
 
 @main_bp.get("/")
@@ -83,5 +117,79 @@ def settings() -> str:
     return render_template(
         "settings.html",
         confidence_threshold=classifier.confidence_threshold if classifier else 0.7,
+        **_user_ctx(),
+    )
+
+
+@main_bp.get("/admin")
+def admin() -> str | Response:
+    """Render the analytics dashboard for signed-in users."""
+    if not session.get("user_id"):
+        return redirect(url_for("auth.signin_get"))
+
+    with get_connection(current_app.config["DATABASE_PATH"]) as connection:
+        summary = connection.execute(
+            """
+            SELECT
+                (SELECT COUNT(*) FROM translations) AS total_translations,
+                (SELECT COUNT(*) FROM users) AS total_users,
+                (SELECT COUNT(DISTINCT user_id) FROM translations WHERE user_id IS NOT NULL) AS active_users,
+                (SELECT COUNT(*) FROM translations WHERE DATE(created_at) = DATE('now')) AS translations_today,
+                (SELECT AVG(confidence) FROM translations WHERE confidence IS NOT NULL) AS average_confidence
+            """
+        ).fetchone()
+
+        top_gestures = connection.execute(
+            """
+            SELECT gesture_label, COUNT(*) AS total
+            FROM translations
+            GROUP BY gesture_label
+            ORDER BY total DESC, gesture_label ASC
+            LIMIT 6
+            """
+        ).fetchall()
+
+        confidence_by_gesture = connection.execute(
+            """
+            SELECT gesture_label, AVG(confidence) AS avg_confidence
+            FROM translations
+            WHERE confidence IS NOT NULL
+            GROUP BY gesture_label
+            HAVING COUNT(*) >= 1
+            ORDER BY avg_confidence DESC, gesture_label ASC
+            LIMIT 6
+            """
+        ).fetchall()
+
+        labels, totals = _translations_over_time(connection)
+
+    stats = {
+        "total_translations": int(summary["total_translations"] or 0),
+        "total_users": int(summary["total_users"] or 0),
+        "active_users": int(summary["active_users"] or 0),
+        "translations_today": int(summary["translations_today"] or 0),
+        "average_confidence": round(float(summary["average_confidence"] or 0.0) * 100, 1),
+    }
+    chart_data = {
+        "translations_over_time": {
+            "labels": labels,
+            "values": totals,
+        },
+        "top_gestures": {
+            "labels": [row["gesture_label"] for row in top_gestures] or ["No data yet"],
+            "values": [int(row["total"]) for row in top_gestures] or [1],
+        },
+        "confidence_by_gesture": {
+            "labels": [row["gesture_label"] for row in confidence_by_gesture] or ["No data yet"],
+            "values": [
+                round(float(row["avg_confidence"] or 0.0) * 100, 1)
+                for row in confidence_by_gesture
+            ] or [0],
+        },
+    }
+    return render_template(
+        "admin.html",
+        stats=stats,
+        chart_data=chart_data,
         **_user_ctx(),
     )

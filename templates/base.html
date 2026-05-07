@@ -59,6 +59,12 @@
           <svg class="sc-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M2 12a10 10 0 0 0 2.93 7.07"/><path d="M6.46 8.46a5 5 0 0 0 0 7.07"/></svg>
           Settings
         </a>
+        {% if current_user and current_user.is_authenticated %}
+        <a href="{{ url_for('main.admin') }}" class="sc-nav-link {% if request.endpoint == 'main.admin' %}active{% endif %}">
+          <svg class="sc-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l3-3 3 2 4-5"/></svg>
+          Admin
+        </a>
+        {% endif %}
       </div>
 
       <!-- Right Actions -->
@@ -107,6 +113,12 @@
         <svg class="sc-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M2 12a10 10 0 0 0 2.93 7.07"/><path d="M6.46 8.46a5 5 0 0 0 0 7.07"/></svg>
         Settings
       </a>
+      {% if current_user and current_user.is_authenticated %}
+      <a href="{{ url_for('main.admin') }}" class="sc-mobile-link {% if request.endpoint == 'main.admin' %}active{% endif %}">
+        <svg class="sc-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l3-3 3 2 4-5"/></svg>
+        Admin
+      </a>
+      {% endif %}
       {% if current_user and current_user.is_authenticated %}
         <a href="{{ url_for('auth.signout') }}" class="sc-mobile-link">Sign Out ({{ current_user.name }})</a>
       {% else %}
