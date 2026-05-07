@@ -131,11 +131,12 @@
       _activeAudio.pause();
       _activeAudio.currentTime = 0;
     }
-    _activeAudio = new Audio(audioUrl);
-    _activeAudio.addEventListener("ended", () => {
-      if (_activeAudio && _activeAudio.src === audioUrl) _activeAudio = null;
+    const audio = new Audio(audioUrl);
+    _activeAudio = audio;
+    audio.addEventListener("ended", () => {
+      if (_activeAudio === audio) _activeAudio = null;
     }, { once: true });
-    _activeAudio.play().catch(() => { });
+    audio.play().catch(() => { });
   }
 
   async function _autoSpeakSentence(sentence) {
