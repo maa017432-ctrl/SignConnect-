@@ -1376,7 +1376,11 @@
   /* ── Clear history (history page) ────────────────────────── */
   async function clearHistory() {
     try {
-      await fetch("/api/history", { method: "DELETE" });
+      await fetch("/api/history", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
+        body: new URLSearchParams({ csrf_token: getCsrfToken() }).toString(),
+      });
     } catch { /* network error */ }
     refreshHistoryPage();
   }
@@ -1532,6 +1536,10 @@
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
+  }
+
+  function getCsrfToken() {
+    return document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "";
   }
 
   /** Strip non-word characters so a value is safe as a CSS class name. */

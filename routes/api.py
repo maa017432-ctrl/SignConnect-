@@ -15,6 +15,7 @@ from pathlib import Path
 from flask import Blueprint, current_app, jsonify, request, session
 from flask.wrappers import Response
 
+from core.csrf import validate_csrf_token
 from core.logging_config import get_uptime_seconds
 from core.prediction_smoother import PredictionSmoother, SentenceBuilder
 from database.db import get_connection
@@ -713,6 +714,8 @@ def update_config() -> tuple[dict[str, float | str], int]:
 @api_bp.delete("/api/history")
 def clear_history() -> tuple[dict[str, str], int]:
     """Delete all translation rows belonging to the current user."""
+    if not _api_key_ok():
+        validate_csrf_token()
     user_id = session.get("user_id")
     with get_connection(current_app.config["DATABASE_PATH"]) as connection:
         if user_id is None:

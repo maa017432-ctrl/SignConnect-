@@ -29,6 +29,19 @@ def client_no_testing():
         yield test_client
 
 
+@pytest.fixture()
+def client_no_testing_secure():
+    """Flask test client with TESTING/DEBUG disabled and API key configured."""
+    from app import create_app
+
+    app = create_app()
+    app.config["TESTING"] = False
+    app.config["DEBUG"] = False
+    app.config["API_KEY"] = "unit-test-api-key"
+    with app.test_client() as test_client:
+        yield test_client
+
+
 def test_main_routes(client) -> None:
     """Ensure page routes render correctly."""
     assert client.get("/").status_code == 200
@@ -333,3 +346,27 @@ def test_csrf_valid_token_accepted_outside_testing(client_no_testing) -> None:
     )
     # 400 would mean CSRF rejection; any other status means the form was processed.
     assert response.status_code != 400
+
+
+def test_clear_history_delete_requires_csrf_without_api_key(client_no_testing_secure) -> None:
+    """DELETE /api/history should fail without CSRF token when API key is absent."""
+    response = client_no_testing_secure.delete("/api/history")
+    assert response.status_code == 400
+
+
+def test_clear_history_delete_accepts_csrf_without_api_key(client_no_testing_secure) -> None:
+    """DELETE /api/history should pass with valid CSRF token when API key is absent."""
+    get_response = client_no_testing_secure.get("/history")
+    assert get_response.status_code == 200
+    body = get_response.get_data(as_text=True)
+
+    import re
+    match = re.search(r'name="csrf-token"\s+content="([^"]+)"', body)
+    assert match, "CSRF token meta tag not found in history page"
+    token = match.group(1)
+
+    response = client_no_testing_secure.delete(
+        "/api/history",
+        data={"csrf_token": token},
+    )
+    assert response.status_code == 200

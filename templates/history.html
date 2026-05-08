@@ -141,6 +141,7 @@
   // ── CSV Export ──────────────────────────────────────────────
   var exportBtn = document.getElementById('download-history-btn');
   var clearBtn = document.getElementById('clear-history-page-btn');
+  var csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
 
   if (exportBtn) {
     exportBtn.addEventListener('click', function () {
@@ -152,7 +153,11 @@
   if (clearBtn) {
     clearBtn.addEventListener('click', function () {
       if (!confirm('Clear all translation history? This cannot be undone.')) return;
-      fetch('/api/history', { method: 'DELETE' })
+      fetch('/api/history', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+        body: new URLSearchParams({ csrf_token: csrfToken }).toString(),
+      })
         .then(function () { location.reload(); })
         .catch(function () { alert('Failed to clear history.'); });
     });
