@@ -13,9 +13,8 @@ from core.translator import Translator
 
 @pytest.fixture(autouse=True)
 def reset_classifier_singleton():
-    GestureClassifier.reset_instance()
+    """Each test gets a fresh ``GestureClassifier`` (no singleton to reset)."""
     yield
-    GestureClassifier.reset_instance()
 
 
 class TestFullPipeline:

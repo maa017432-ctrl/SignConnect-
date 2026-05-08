@@ -34,24 +34,6 @@ LOGGER = logging.getLogger(__name__)
 class GestureClassifier:
     """Classify hand landmarks into label indices with confidence scores."""
 
-    _instance: "GestureClassifier | None" = None
-    _instance_lock: Lock = Lock()
-
-    def __new__(cls, *args, **kwargs) -> "GestureClassifier":
-        """Create a lazy singleton instance."""
-        if cls._instance is None:
-            with cls._instance_lock:
-                if cls._instance is None:
-                    cls._instance = super().__new__(cls)
-                    cls._instance._initialized = False
-        return cls._instance
-
-    @classmethod
-    def reset_instance(cls) -> None:
-        """Reset the singleton instance for tests and controlled reinitialization."""
-        with cls._instance_lock:
-            cls._instance = None
-
     def __init__(
         self,
         model_path: str,
@@ -61,22 +43,6 @@ class GestureClassifier:
         model_type: str = DEFAULT_MODEL_TYPE,
         sequence_length: int = SEQUENCE_LENGTH,
     ) -> None:
-        config_signature = (
-            str(Path(model_path)),
-            float(confidence_threshold),
-            int(labels_count),
-            int(model_input_dim),
-            model_type,
-            int(sequence_length),
-        )
-        if getattr(self, "_initialized", False):
-            if getattr(self, "_config_signature", None) != config_signature:
-                LOGGER.warning(
-                    "GestureClassifier singleton already initialized; ignoring "
-                    "new configuration %s",
-                    config_signature,
-                )
-            return
         self.model_path = Path(model_path)
         self.confidence_threshold = confidence_threshold
         self.labels_count = labels_count
@@ -85,13 +51,11 @@ class GestureClassifier:
         self.sequence_length = sequence_length
         self._sequence_buffer: deque[np.ndarray] = deque(maxlen=sequence_length)
         self._predict_lock: Lock = Lock()
-        self._config_signature = config_signature
         self.model = None
         self._available = False
         self._demo_mode = True
         self._demo_label_indices: list[int] = []
         self._try_init()
-        self._initialized = True
 
     @property
     def is_available(self) -> bool:

@@ -15,6 +15,7 @@ from pathlib import Path
 from flask import Blueprint, current_app, jsonify, request, session
 from flask.wrappers import Response
 
+from core.csrf import validate_csrf_token
 from core.logging_config import get_uptime_seconds
 from core.prediction_smoother import PredictionSmoother, SentenceBuilder
 from database.db import get_connection
@@ -152,6 +153,20 @@ def health() -> tuple[Response, int]:
               type: number
             model_loaded:
               type: boolean
+            memory:
+              type: object
+              description: Present only when psutil is installed.
+              properties:
+                rss_mb:
+                  type: number
+                vms_mb:
+                  type: number
+            threads:
+              type: integer
+              description: Number of OS threads (present only when psutil is installed).
+            open_fds:
+              type: integer
+              description: Open file-descriptor count (Unix only, present when psutil is installed).
       503:
         description: Application is running in degraded mode because the model is unavailable.
     """
@@ -587,16 +602,27 @@ def get_history() -> tuple[list[dict[str, str | float | None]], int]:
     """Return latest translation history as JSON list."""
     user_id = session.get("user_id")
     with get_connection(current_app.config["DATABASE_PATH"]) as connection:
-        rows = connection.execute(
-            """
-            SELECT id, gesture_label, confidence, audio_file, created_at
-            FROM translations
-            WHERE user_id = ?
-            ORDER BY id DESC
-            LIMIT 50
-            """,
-            (user_id,),
-        ).fetchall()
+        if user_id is None:
+            rows = connection.execute(
+                """
+                SELECT id, gesture_label, confidence, audio_file, created_at
+                FROM translations
+                WHERE user_id IS NULL
+                ORDER BY id DESC
+                LIMIT 50
+                """
+            ).fetchall()
+        else:
+            rows = connection.execute(
+                """
+                SELECT id, gesture_label, confidence, audio_file, created_at
+                FROM translations
+                WHERE user_id = ?
+                ORDER BY id DESC
+                LIMIT 50
+                """,
+                (user_id,),
+            ).fetchall()
 
     payload = [
         {
@@ -615,19 +641,27 @@ def get_history() -> tuple[list[dict[str, str | float | None]], int]:
 def export_history_csv() -> Response | tuple[Response, int]:
     """Export current user's translation history as a downloadable CSV file."""
     user_id = session.get("user_id")
-    if user_id is None:
-        return jsonify({"error": "Unauthorized", "code": 401}), 401
 
     with get_connection(current_app.config["DATABASE_PATH"]) as connection:
-        rows = connection.execute(
-            """
-            SELECT gesture_label, confidence, audio_file, created_at
-            FROM translations
-            WHERE user_id = ?
-            ORDER BY id DESC
-            """,
-            (user_id,),
-        ).fetchall()
+        if user_id is None:
+            rows = connection.execute(
+                """
+                SELECT gesture_label, confidence, audio_file, created_at
+                FROM translations
+                WHERE user_id IS NULL
+                ORDER BY id DESC
+                """
+            ).fetchall()
+        else:
+            rows = connection.execute(
+                """
+                SELECT gesture_label, confidence, audio_file, created_at
+                FROM translations
+                WHERE user_id = ?
+                ORDER BY id DESC
+                """,
+                (user_id,),
+            ).fetchall()
 
     buffer = io.StringIO(newline="")
     writer = csv.writer(buffer)
@@ -681,10 +715,13 @@ def update_config() -> tuple[dict[str, float | str], int]:
 def clear_history() -> tuple[dict[str, str], int]:
     """Delete all translation rows belonging to the current user."""
     if not _api_key_ok():
-        return jsonify({"error": "Unauthorized", "code": 401}), 401
+        validate_csrf_token()
     user_id = session.get("user_id")
     with get_connection(current_app.config["DATABASE_PATH"]) as connection:
-        connection.execute("DELETE FROM translations WHERE user_id = ?", (user_id,))
+        if user_id is None:
+            connection.execute("DELETE FROM translations WHERE user_id IS NULL")
+        else:
+            connection.execute("DELETE FROM translations WHERE user_id = ?", (user_id,))
     return jsonify({"status": "cleared"}), 200
 
 

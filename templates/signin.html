@@ -31,6 +31,7 @@
     {% endif %}
 
     <form class="sc-auth-form" method="POST" action="{{ url_for('auth.signin_post') }}" novalidate>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="sc-form-group">
         <label for="auth-email">Email address</label>
         <input type="email" id="auth-email" name="email" placeholder="you@example.com" required autocomplete="email" class="sc-form-input">

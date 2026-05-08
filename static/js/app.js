@@ -907,6 +907,7 @@
     socket.on("connect", () => {
       socketConnected = true;
       LOGGER("WebSocket connected");
+      stopPredictionPoll();
     });
 
     socket.on("disconnect", () => {
@@ -948,6 +949,12 @@
     // Keep polling as a reliable fallback. Waitress can serve the app, but
     // SocketIO push may be unavailable depending on the local server path.
     startPredictionPoll();
+  }
+
+  function stopPredictionPoll() {
+    if (!predictionTimer) return;
+    clearInterval(predictionTimer);
+    predictionTimer = null;
   }
 
   function startPredictionPoll() {
@@ -1369,7 +1376,11 @@
   /* ── Clear history (history page) ────────────────────────── */
   async function clearHistory() {
     try {
-      await fetch("/api/history", { method: "DELETE" });
+      await fetch("/api/history", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
+        body: new URLSearchParams({ csrf_token: getCsrfToken() }).toString(),
+      });
     } catch { /* network error */ }
     refreshHistoryPage();
   }
@@ -1527,6 +1538,10 @@
       .replace(/"/g, "&quot;");
   }
 
+  function getCsrfToken() {
+    return document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "";
+  }
+
   /** Strip non-word characters so a value is safe as a CSS class name. */
   function safeClass(str) {
     return String(str).replace(/[^a-zA-Z0-9_-]/g, "");
@@ -1610,7 +1625,7 @@
     if (liveBadge) liveBadge.style.display = "";
     setDot(cameraDot, "pulsing");
     startSessionTimer();
-    startPredictionPoll();
+    if (!socketConnected) startPredictionPoll();
 
     // ── Camera connection timeout (30 s) ──
     setTimeout(() => {
@@ -1639,7 +1654,7 @@
   function pauseStream() {
     paused = true;
     if (streamTimer) { clearInterval(streamTimer); streamTimer = null; }
-    if (predictionTimer) { clearInterval(predictionTimer); predictionTimer = null; }
+    stopPredictionPoll();
     if (checkVideoTimer) { clearInterval(checkVideoTimer); checkVideoTimer = null; }
     if (video) video.removeAttribute("src");
     if (blobUrl) { URL.revokeObjectURL(blobUrl); blobUrl = null; }

@@ -16,6 +16,7 @@ from flask_socketio import SocketIO
 from config import Config
 from core.ai_model import GestureClassifier
 from core.camera import CameraManager
+from core.csrf import generate_csrf_token
 from core.gesture_detector import GestureDetector
 from core.logging_config import configure_logging
 from core.prediction_smoother import PredictionSmoother, SentenceBuilder
@@ -171,6 +172,11 @@ def create_app() -> Flask:
     app.register_blueprint(auth_bp)
     app.register_blueprint(stream_bp)
     app.register_blueprint(api_bp)
+
+    @app.context_processor
+    def _inject_csrf() -> dict[str, object]:
+        """Make ``csrf_token()`` callable in every Jinja2 template."""
+        return {"csrf_token": generate_csrf_token}
 
     app.add_url_rule(
         "/camera_frame",

@@ -12,10 +12,8 @@ from core.ai_model import GestureClassifier
 
 @pytest.fixture(autouse=True)
 def reset_gesture_classifier_singleton() -> None:
-    """Each test gets a fresh ``GestureClassifier`` (singleton reset)."""
-    GestureClassifier.reset_instance()
+    """Each test gets a fresh ``GestureClassifier`` (no singleton to reset)."""
     yield
-    GestureClassifier.reset_instance()
 
 
 class _FakeModel:
@@ -49,7 +47,7 @@ def test_confidence_threshold_rejection() -> None:
     assert label >= 0
 
 
-def test_singleton_reuse_warns_on_config_mismatch(caplog) -> None:
+def test_classifier_instances_are_independent_with_different_configs(caplog) -> None:
     first = GestureClassifier(
         model_path="missing-model.h5",
         confidence_threshold=0.75,
@@ -61,8 +59,16 @@ def test_singleton_reuse_warns_on_config_mismatch(caplog) -> None:
         labels_count=12,
     )
 
-    assert first is second
-    assert "singleton already initialized" in caplog.text
+    assert first is not second
+    assert first.model_path.name == "missing-model.h5"
+    assert second.model_path.name == "other-model.h5"
+    assert first.confidence_threshold == 0.75
+    assert second.confidence_threshold == 0.5
+    assert not first.is_available
+    assert first.is_demo_mode
+    assert not second.is_available
+    assert second.is_demo_mode
+    assert "singleton already initialized" not in caplog.text
 
 
 def test_loaded_model_contract_match_is_available(tmp_path) -> None:
