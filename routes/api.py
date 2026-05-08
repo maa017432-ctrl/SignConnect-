@@ -62,6 +62,13 @@ def _api_key_ok() -> bool:
     return request.headers.get("X-API-Key", "") == required
 
 
+def _history_scope_clause(user_id: int | None) -> tuple[str, tuple[object, ...]]:
+    """Return SQL scope clause/params for history queries with NULL-safe user handling."""
+    if user_id is None:
+        return "user_id IS NULL", ()
+    return "user_id = ?", (user_id,)
+
+
 @api_bp.get("/api/status")
 def status() -> tuple[dict[str, object], int]:
     """Return runtime health status for core services.
@@ -600,16 +607,17 @@ def translate() -> tuple[dict[str, str | int], int]:
 def get_history() -> tuple[list[dict[str, str | float | None]], int]:
     """Return latest translation history as JSON list."""
     user_id = session.get("user_id")
+    scope_sql, scope_params = _history_scope_clause(user_id)
     with get_connection(current_app.config["DATABASE_PATH"]) as connection:
         rows = connection.execute(
-            """
+            f"""
             SELECT id, gesture_label, confidence, audio_file, created_at
             FROM translations
-            WHERE user_id = ?
+            WHERE {scope_sql}
             ORDER BY id DESC
             LIMIT 50
             """,
-            (user_id,),
+            scope_params,
         ).fetchall()
 
     payload = [
@@ -629,18 +637,17 @@ def get_history() -> tuple[list[dict[str, str | float | None]], int]:
 def export_history_csv() -> Response | tuple[Response, int]:
     """Export current user's translation history as a downloadable CSV file."""
     user_id = session.get("user_id")
-    if user_id is None:
-        return jsonify({"error": "Unauthorized", "code": 401}), 401
+    scope_sql, scope_params = _history_scope_clause(user_id)
 
     with get_connection(current_app.config["DATABASE_PATH"]) as connection:
         rows = connection.execute(
-            """
+            f"""
             SELECT gesture_label, confidence, audio_file, created_at
             FROM translations
-            WHERE user_id = ?
+            WHERE {scope_sql}
             ORDER BY id DESC
             """,
-            (user_id,),
+            scope_params,
         ).fetchall()
 
     buffer = io.StringIO(newline="")
@@ -694,11 +701,13 @@ def update_config() -> tuple[dict[str, float | str], int]:
 @api_bp.delete("/api/history")
 def clear_history() -> tuple[dict[str, str], int]:
     """Delete all translation rows belonging to the current user."""
-    if not _api_key_ok():
-        return jsonify({"error": "Unauthorized", "code": 401}), 401
     user_id = session.get("user_id")
+    scope_sql, scope_params = _history_scope_clause(user_id)
     with get_connection(current_app.config["DATABASE_PATH"]) as connection:
-        connection.execute("DELETE FROM translations WHERE user_id = ?", (user_id,))
+        connection.execute(
+            f"DELETE FROM translations WHERE {scope_sql}",
+            scope_params,
+        )
     return jsonify({"status": "cleared"}), 200
 
 

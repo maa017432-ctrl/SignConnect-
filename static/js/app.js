@@ -907,6 +907,7 @@
     socket.on("connect", () => {
       socketConnected = true;
       LOGGER("WebSocket connected");
+      stopPredictionPoll();
     });
 
     socket.on("disconnect", () => {
@@ -948,6 +949,12 @@
     // Keep polling as a reliable fallback. Waitress can serve the app, but
     // SocketIO push may be unavailable depending on the local server path.
     startPredictionPoll();
+  }
+
+  function stopPredictionPoll() {
+    if (!predictionTimer) return;
+    clearInterval(predictionTimer);
+    predictionTimer = null;
   }
 
   function startPredictionPoll() {
@@ -1610,7 +1617,7 @@
     if (liveBadge) liveBadge.style.display = "";
     setDot(cameraDot, "pulsing");
     startSessionTimer();
-    startPredictionPoll();
+    if (!socketConnected) startPredictionPoll();
 
     // ── Camera connection timeout (30 s) ──
     setTimeout(() => {
@@ -1639,7 +1646,7 @@
   function pauseStream() {
     paused = true;
     if (streamTimer) { clearInterval(streamTimer); streamTimer = null; }
-    if (predictionTimer) { clearInterval(predictionTimer); predictionTimer = null; }
+    stopPredictionPoll();
     if (checkVideoTimer) { clearInterval(checkVideoTimer); checkVideoTimer = null; }
     if (video) video.removeAttribute("src");
     if (blobUrl) { URL.revokeObjectURL(blobUrl); blobUrl = null; }

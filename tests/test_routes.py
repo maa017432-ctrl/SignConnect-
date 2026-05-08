@@ -125,7 +125,7 @@ def test_api_routes(client) -> None:
     assert payload is not None
     assert payload.get("camera_frame_route") is True
     assert client.get("/api/history").status_code == 200
-    assert client.get("/api/export_history").status_code == 401
+    assert client.get("/api/export_history").status_code == 200
     assert client.delete("/api/history").status_code == 200
 
 
@@ -189,6 +189,38 @@ def test_history_page_includes_download_history_csv_button(client) -> None:
     assert response.status_code == 200
     assert 'id="download-history-btn"' in body
     assert "Download History CSV" in body
+
+
+def test_history_endpoints_support_anonymous_null_user_rows(client) -> None:
+    """Anonymous users should be able to export and clear NULL-scoped history rows."""
+    from database.db import get_connection
+
+    db_path = client.application.config["DATABASE_PATH"]
+    with get_connection(db_path) as connection:
+        session_id = connection.execute(
+            "INSERT INTO sessions (ended_at) VALUES (NULL)"
+        ).lastrowid
+        connection.execute(
+            """
+            INSERT INTO translations (session_id, user_id, gesture_label, confidence, audio_file)
+            VALUES (?, NULL, ?, ?, ?)
+            """,
+            (session_id, "Guest Hello", 0.73, "guest-hello.mp3"),
+        )
+
+    export_response = client.get("/api/export_history")
+    csv_body = export_response.get_data(as_text=True)
+    assert export_response.status_code == 200
+    assert "Guest Hello,0.73,guest-hello.mp3," in csv_body
+
+    clear_response = client.delete("/api/history")
+    assert clear_response.status_code == 200
+
+    with get_connection(db_path) as connection:
+        remaining = connection.execute(
+            "SELECT COUNT(*) AS total FROM translations WHERE user_id IS NULL"
+        ).fetchone()["total"]
+    assert remaining == 0
 
 
 def test_api_docs_routes(client) -> None:
@@ -301,4 +333,3 @@ def test_csrf_valid_token_accepted_outside_testing(client_no_testing) -> None:
     )
     # 400 would mean CSRF rejection; any other status means the form was processed.
     assert response.status_code != 400
-
