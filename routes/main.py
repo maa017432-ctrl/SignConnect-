@@ -106,19 +106,28 @@ def service_worker() -> Response:
 def history() -> str:
     """Render latest translation history from SQLite."""
     user_id = session.get("user_id")
-    where_clause = "user_id IS NULL" if user_id is None else "user_id = ?"
-    params = () if user_id is None else (user_id,)
     with get_connection(current_app.config["DATABASE_PATH"]) as connection:
-        rows = connection.execute(
-            f"""
-            SELECT gesture_label, confidence, audio_file, created_at
-            FROM translations
-            WHERE {where_clause}
-            ORDER BY id DESC
-            LIMIT 50
-            """,
-            params,
-        ).fetchall()
+        if user_id is None:
+            rows = connection.execute(
+                """
+                SELECT gesture_label, confidence, audio_file, created_at
+                FROM translations
+                WHERE user_id IS NULL
+                ORDER BY id DESC
+                LIMIT 50
+                """
+            ).fetchall()
+        else:
+            rows = connection.execute(
+                """
+                SELECT gesture_label, confidence, audio_file, created_at
+                FROM translations
+                WHERE user_id = ?
+                ORDER BY id DESC
+                LIMIT 50
+                """,
+                (user_id,),
+            ).fetchall()
     return render_template("history.html", rows=rows, **_user_ctx())
 
 
