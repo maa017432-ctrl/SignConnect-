@@ -64,6 +64,10 @@ def test_classifier_instances_are_independent_with_different_configs(caplog) -> 
     assert second.model_path.name == "other-model.h5"
     assert first.confidence_threshold == 0.75
     assert second.confidence_threshold == 0.5
+    assert not first.is_available
+    assert first.is_demo_mode
+    assert not second.is_available
+    assert second.is_demo_mode
     assert "singleton already initialized" not in caplog.text
 
 
