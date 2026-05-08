@@ -18,6 +18,17 @@ def client():
         yield test_client
 
 
+@pytest.fixture()
+def client_no_testing():
+    """Flask test client with TESTING=False so CSRF validation is active."""
+    from app import create_app
+
+    app = create_app()
+    app.config["TESTING"] = False
+    with app.test_client() as test_client:
+        yield test_client
+
+
 def test_main_routes(client) -> None:
     """Ensure page routes render correctly."""
     assert client.get("/").status_code == 200
@@ -210,10 +221,14 @@ def test_health_endpoint(client) -> None:
     assert payload["uptime_seconds"] >= 0
     assert "model_loaded" in payload
     assert isinstance(payload["model_loaded"], bool)
-    # threads is included when psutil is available (best-effort check)
+    # threads and memory are included when psutil is available (best-effort check)
     if "threads" in payload:
         assert isinstance(payload["threads"], int)
         assert payload["threads"] >= 1
+    if "memory" in payload:
+        assert isinstance(payload["memory"], dict)
+        assert "rss_mb" in payload["memory"]
+        assert "vms_mb" in payload["memory"]
 
 
 def test_camera_frame_jpeg(client) -> None:
@@ -222,3 +237,68 @@ def test_camera_frame_jpeg(client) -> None:
         response = client.get(path)
         assert response.status_code == 200, path
         assert response.content_type.startswith("image/jpeg"), path
+
+
+# ── CSRF protection tests ─────────────────────────────────────────────────────
+
+def test_csrf_token_injected_in_signin_template(client) -> None:
+    """The sign-in form must render a hidden CSRF token field."""
+    response = client.get("/signin")
+    body = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert 'name="csrf_token"' in body
+
+
+def test_csrf_token_injected_in_signup_template(client) -> None:
+    """The sign-up form must render a hidden CSRF token field."""
+    response = client.get("/signup")
+    body = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert 'name="csrf_token"' in body
+
+
+def test_csrf_testing_mode_bypass_allows_signin(client) -> None:
+    """In TESTING mode, signin POST succeeds without a CSRF token."""
+    # The client fixture sets TESTING=True, so CSRF validation is skipped.
+    response = client.post(
+        "/signin",
+        data={"email": "nobody@example.com", "password": "wrongpassword"},
+        follow_redirects=False,
+    )
+    # Response is a rendered page with an error (bad credentials), not a 400.
+    assert response.status_code == 200
+    assert b"Invalid email or password" in response.data
+
+
+def test_csrf_missing_token_rejected_outside_testing(client_no_testing) -> None:
+    """Outside TESTING mode, a POST without a CSRF token returns 400."""
+    response = client_no_testing.post(
+        "/signin",
+        data={"email": "test@example.com", "password": "somepassword"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 400
+
+
+def test_csrf_valid_token_accepted_outside_testing(client_no_testing) -> None:
+    """Outside TESTING mode, a POST with the correct CSRF token is accepted."""
+    # First GET to establish a session token.
+    get_response = client_no_testing.get("/signin")
+    assert get_response.status_code == 200
+    body = get_response.get_data(as_text=True)
+
+    # Extract the token value from the rendered form.
+    import re
+    match = re.search(r'name="csrf_token"\s+value="([^"]+)"', body)
+    assert match, "CSRF token not found in signin form"
+    token = match.group(1)
+
+    # POST with the correct token — should reach the auth logic (not 400).
+    response = client_no_testing.post(
+        "/signin",
+        data={"email": "test@example.com", "password": "somepassword", "csrf_token": token},
+        follow_redirects=False,
+    )
+    # 400 would mean CSRF rejection; any other status means the form was processed.
+    assert response.status_code != 400
+

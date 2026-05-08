@@ -152,6 +152,20 @@ def health() -> tuple[Response, int]:
               type: number
             model_loaded:
               type: boolean
+            memory:
+              type: object
+              description: Present only when psutil is installed.
+              properties:
+                rss_mb:
+                  type: number
+                vms_mb:
+                  type: number
+            threads:
+              type: integer
+              description: Number of OS threads (present only when psutil is installed).
+            open_fds:
+              type: integer
+              description: Open file-descriptor count (Unix only, present when psutil is installed).
       503:
         description: Application is running in degraded mode because the model is unavailable.
     """

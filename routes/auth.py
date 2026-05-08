@@ -16,6 +16,7 @@ from flask import (
 )
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from core.csrf import validate_csrf_token
 from database.db import get_connection
 from flask import current_app
 
@@ -61,6 +62,7 @@ def signin_get() -> str:
 @auth_bp.post("/signin")
 def signin_post():
     """Handle sign-in form submission."""
+    validate_csrf_token()
     email = request.form.get("email", "").strip()
     password = request.form.get("password", "").strip()
 
@@ -94,6 +96,7 @@ def signup_get() -> str:
 @auth_bp.post("/signup")
 def signup_post():
     """Handle sign-up form submission."""
+    validate_csrf_token()
     first = request.form.get("first_name", "").strip()
     last = request.form.get("last_name", "").strip()
     email = request.form.get("email", "").strip()

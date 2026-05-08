@@ -12,10 +12,8 @@ from core.ai_model import GestureClassifier
 
 @pytest.fixture(autouse=True)
 def reset_gesture_classifier_singleton() -> None:
-    """Each test gets a fresh ``GestureClassifier`` (singleton reset)."""
-    GestureClassifier.reset_instance()
+    """Each test gets a fresh ``GestureClassifier`` (no singleton to reset)."""
     yield
-    GestureClassifier.reset_instance()
 
 
 class _FakeModel:
