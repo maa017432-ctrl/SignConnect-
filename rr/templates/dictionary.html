@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Dictionary{% endblock %}
+{% block meta_description %}Browse all recognized sign language gestures in the SignConnect vocabulary.{% endblock %}
+
+{% block content %}
+<div class="panel" style="margin-top:1rem;">
+  <div class="history-header">
+    <h2>Gesture Dictionary</h2>
+    <span class="badge mid">{{ labels|length }} signs</span>
+  </div>
+  <p style="color:var(--text-muted);font-size:.85rem;margin-bottom:1rem;">
+    The model currently recognizes the following {{ labels|length }} gestures.
+  </p>
+
+  <div class="dict-filter-row">
+    <input id="dict-search" type="text" placeholder="Search gestures…" class="dict-search">
+  </div>
+
+  <div id="dict-grid" class="dict-grid">
+    {% for label in labels %}
+    <div class="dict-card" data-label="{{ label|lower }}">
+      <span class="dict-label">{{ label }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<script>
+(function () {
+  var search = document.getElementById("dict-search");
+  var cards = document.querySelectorAll(".dict-card");
+  if (!search) return;
+  search.addEventListener("input", function () {
+    var q = search.value.trim().toLowerCase();
+    cards.forEach(function (card) {
+      card.style.display = card.dataset.label.indexOf(q) !== -1 ? "" : "none";
+    });
+  });
+})();
+</script>
+{% endblock %}

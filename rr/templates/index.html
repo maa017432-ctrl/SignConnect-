@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Home{% endblock %}
+{% block meta_description %}SignConnect — real-time AI sign language translator using MediaPipe hand tracking and deep learning.{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <div class="hero-text">
+    <h2>Real-Time Sign Language Translation</h2>
+    <p>
+      SignConnect uses your webcam, MediaPipe hand landmark detection, and a
+      gesture classifier to translate sign language into text and speech — live.
+    </p>
+    <a class="btn" href="{{ url_for('main.translator') }}">Open Translator →</a>
+  </div>
+  <div class="panel" style="display:flex;flex-direction:column;gap:.5rem;">
+    <p style="font-size:.8rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:.25rem;">Subsystem status</p>
+    <div class="status-bar" style="margin:0;padding:0;border:none;flex-direction:column;gap:.5rem;">
+      <span class="status-chip"><span class="status-dot pulsing" id="camera-dot"></span><span id="camera-status">Camera: —</span></span>
+      <span class="status-chip"><span class="status-dot" id="model-dot"></span><span id="model-status">Model: —</span></span>
+      <span class="status-chip"><span class="status-dot" id="fps-status-dot"></span><span id="fps-status">FPS: —</span></span>
+    </div>
+  </div>
+</section>
+
+<div class="feature-grid" style="margin-top:2rem;">
+  <div class="feature-card">
+    <div class="icon">📷</div>
+    <h3>Live Camera Feed</h3>
+    <p>Streams your webcam at up to 12 fps with automatic index detection and warm-up reads.</p>
+  </div>
+  <div class="feature-card">
+    <div class="icon">🖐</div>
+    <h3>MediaPipe Hands</h3>
+    <p>Extracts 21 3D hand landmarks per frame in real time, even on CPU-only hardware.</p>
+  </div>
+  <div class="feature-card">
+    <div class="icon">🧠</div>
+    <h3>Gesture Classifier</h3>
+    <p>A Keras MLP maps landmark vectors to sign labels with a confidence threshold gate.</p>
+  </div>
+  <div class="feature-card">
+    <div class="icon">🔊</div>
+    <h3>Text-to-Speech</h3>
+    <p>gTTS converts recognized text to audio, with a 60-second cache and pyttsx3 fallback.</p>
+  </div>
+  <div class="feature-card">
+    <div class="icon">🛡️</div>
+    <h3>Graceful Degradation</h3>
+    <p>Every subsystem has a safe fallback — the app runs even when camera or model is unavailable.</p>
+  </div>
+  <div class="feature-card">
+    <div class="icon">📜</div>
+    <h3>Translation History</h3>
+    <p>Every spoken translation is persisted to SQLite and browsable with inline audio playback.</p>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,14 @@
+CREATE TABLE IF NOT EXISTS sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    ended_at DATETIME
+);
+
+CREATE TABLE IF NOT EXISTS translations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER REFERENCES sessions(id),
+    gesture_label TEXT NOT NULL,
+    confidence REAL,
+    audio_file TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);

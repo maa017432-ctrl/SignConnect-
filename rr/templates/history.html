@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}History{% endblock %}
+{% block meta_description %}Browse the full translation history with audio playback.{% endblock %}
+
+{% block content %}
+<div class="panel" style="margin-top:1rem;">
+  <div class="history-header">
+    <h2>Translation History</h2>
+    <div style="display:flex;gap:.5rem;">
+      <button id="refresh-history-btn" type="button" class="btn btn-secondary">↻ Refresh</button>
+      <button id="clear-history-btn" type="button" class="btn btn-danger">🗑 Clear All</button>
+    </div>
+  </div>
+
+  <table class="history-table">
+    <thead>
+      <tr>
+        <th>Label</th>
+        <th>Confidence</th>
+        <th>Audio</th>
+        <th>Time</th>
+      </tr>
+    </thead>
+    <tbody id="history-tbody">
+      {% for row in rows %}
+      <tr>
+        <td>{{ row['gesture_label'] }}</td>
+        <td>
+          {% if row['confidence'] is not none %}
+            {{ "%.1f"|format(row['confidence'] * 100) }}%
+          {% else %}—{% endif %}
+        </td>
+        <td>
+          {% if row['audio_file'] %}
+            <audio src="{{ url_for('static', filename='audio/' ~ row['audio_file']) }}"
+                   controls preload="none"></audio>
+          {% else %}—{% endif %}
+        </td>
+        <td>{{ row['created_at'] }}</td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="4" class="history-empty">No history yet.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

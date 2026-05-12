@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Translator{% endblock %}
+{% block meta_description %}Live sign language translator — camera feed, gesture recognition, and speech synthesis.{% endblock %}
+
+{% block content %}
+<div class="translator-grid" style="margin-top:1rem;">
+
+  <!-- ── Video panel ── -->
+  <div class="panel video-panel">
+    <h2>Live Stream</h2>
+    <div class="video-wrapper">
+      <img
+        id="video-stream"
+        src=""
+        alt="Live sign language feed"
+        width="640"
+        height="480"
+        decoding="async"
+        data-mjpeg-url="{{ url_for('stream.video_feed') }}"
+        data-frame-url="{{ url_for('api.api_camera_frame') }}"
+      >
+      <div id="video-overlay" class="video-overlay">
+        <div class="spinner"></div>
+        <span class="overlay-msg">Connecting to camera…</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Info panel ── -->
+  <div class="panel info-panel">
+
+    <!-- Current gesture -->
+    <h2>Current Gesture</h2>
+    <div class="gesture-row">
+      <div id="recognized-text" class="recognized-text">—</div>
+      <span id="confidence-badge" class="badge low">0%</span>
+    </div>
+
+    <!-- Word-commit progress bar -->
+    <div class="progress-wrap" title="Hold gesture steadily to commit a word">
+      <div id="commit-progress" class="progress-bar"></div>
+    </div>
+    <p class="progress-hint" id="progress-hint">Hold a gesture to build a word</p>
+
+    <!-- Sentence display -->
+    <h2 style="margin-top:1.25rem;">Sentence</h2>
+    <div id="sentence-display" class="sentence-display">…</div>
+
+    <!-- Main controls -->
+    <div class="controls" style="margin-top:1rem;">
+      <button id="start-btn"       type="button">▶ Start</button>
+      <button id="pause-btn"       type="button" class="btn-secondary">⏸ Pause</button>
+      <button id="speak-btn"       type="button">🔊 Speak</button>
+      <button id="delete-word-btn" type="button" class="btn-secondary">← Undo</button>
+      <button id="clear-btn"       type="button" class="btn-secondary btn-danger">🗑 Clear</button>
+    </div>
+
+    <!-- Settings row -->
+    <div class="settings-row">
+      <!-- Language selector -->
+      <div class="setting-group">
+        <label class="setting-label" for="lang-select">🌍 Language</label>
+        <select id="lang-select" class="setting-select">
+          <option value="en">🇺🇸 English</option>
+          <option value="ar">🇸🇦 Arabic</option>
+          <option value="fr">🇫🇷 French</option>
+          <option value="es">🇪🇸 Spanish</option>
+          <option value="de">🇩🇪 German</option>
+          <option value="zh">🇨🇳 Chinese</option>
+          <option value="ja">🇯🇵 Japanese</option>
+          <option value="ko">🇰🇷 Korean</option>
+        </select>
+      </div>
+
+      <!-- Confidence threshold slider -->
+      <div class="setting-group" style="flex:1">
+        <label class="setting-label" for="threshold-slider">
+          🎯 Min confidence: <strong id="threshold-val">75%</strong>
+        </label>
+        <input
+          id="threshold-slider"
+          type="range"
+          min="10" max="99" value="75" step="1"
+          title="Gesture must exceed this confidence to be recognised"
+        >
+      </div>
+
+      <div class="setting-group">
+        <label class="setting-label training-toggle-label" for="training-mode-toggle">
+          <input id="training-mode-toggle" type="checkbox">
+          🧪 Training mode
+        </label>
+      </div>
+    </div>
+
+    <div id="topk-panel" class="topk-panel hidden">
+      <h3>Raw Top Predictions (pre-threshold)</h3>
+      <ul id="topk-list" class="topk-list"></ul>
+    </div>
+
+    <!-- Recent history list -->
+    <ul id="history-list" class="history-list" style="margin-top:1rem;"></ul>
+
+    <!-- Status bar -->
+    <div class="status-bar">
+      <span class="status-chip">
+        <span class="status-dot pulsing" id="camera-dot"></span>
+        <span id="camera-status">Camera: —</span>
+      </span>
+      <span class="status-chip">
+        <span class="status-dot" id="model-dot"></span>
+        <span id="model-status">Model: —</span>
+      </span>
+      <span class="status-chip">
+        <span class="status-dot ok"></span>
+        <span id="fps-status">FPS: —</span>
+      </span>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
